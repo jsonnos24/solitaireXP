@@ -197,7 +197,32 @@
     return false;
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation };
+  function isWon(state) {
+    return state.foundations.every(f => f.length === 13);
+  }
+
+  function canAutoComplete(state) {
+    if (isWon(state)) return false;
+    if (state.stock.length > 0 || state.waste.length > 0) return false;
+    return state.tableau.every(col => col.every(c => c.faceUp));
+  }
+
+  // Performs a single auto-complete move (tableau or waste top → foundation).
+  // Returns true if a card was placed, false when no move is available.
+  function autoCompleteStep(state) {
+    for (let i = 0; i < 7; i++) {
+      if (state.tableau[i].length &&
+          autoToFoundation(state, { pile: 'tableau', index: i })) {
+        return true;
+      }
+    }
+    if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) {
+      return true;
+    }
+    return false;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, isWon, canAutoComplete, autoCompleteStep };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

@@ -212,3 +212,28 @@ test('autoToFoundation works from waste', () => {
   assert.equal(moved, true);
   assert.equal(s.waste.length, 0);
 });
+
+test('isWon true only when all four foundations are complete', () => {
+  const s = tableauState([[], [], [], [], [], [], []]);
+  assert.equal(Solitaire.isWon(s), false);
+  s.foundations = Solitaire.SUITS.map(suit =>
+    Array.from({ length: 13 }, (_, i) => C(i + 1, suit)));
+  assert.equal(Solitaire.isWon(s), true);
+});
+
+test('canAutoComplete true when stock+waste empty and all tableau face-up', () => {
+  const s = tableauState([[C(13, 'S')], [], [], [], [], [], []]);
+  assert.equal(Solitaire.canAutoComplete(s), true);
+  s.tableau[0] = [C(13, 'S', false)];
+  assert.equal(Solitaire.canAutoComplete(s), false);
+  s.tableau[0] = [C(13, 'S')];
+  s.stock = [C(2, 'S', false)];
+  assert.equal(Solitaire.canAutoComplete(s), false);
+});
+
+test('autoCompleteStep makes one foundation move and returns true, false when done', () => {
+  const s = tableauState([[C(1, 'H')], [C(1, 'S')], [], [], [], [], []]);
+  assert.equal(Solitaire.autoCompleteStep(s), true);
+  assert.equal(Solitaire.autoCompleteStep(s), true);
+  assert.equal(Solitaire.autoCompleteStep(s), false);
+});
