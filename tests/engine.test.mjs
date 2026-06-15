@@ -237,3 +237,21 @@ test('autoCompleteStep makes one foundation move and returns true, false when do
   assert.equal(Solitaire.autoCompleteStep(s), true);
   assert.equal(Solitaire.autoCompleteStep(s), false);
 });
+
+test('cloneState produces an independent deep copy', () => {
+  const s = tableauState([[C(7, 'H')], [], [], [], [], [], []]);
+  const c = Solitaire.cloneState(s);
+  c.tableau[0][0].rank = 99;
+  c.score = 50;
+  assert.equal(s.tableau[0][0].rank, 7);
+  assert.equal(s.score, 0);
+});
+
+test('timeBonus: 0 for short/zero games, larger for faster wins', () => {
+  assert.equal(Solitaire.timeBonus(0), 0);
+  assert.equal(Solitaire.timeBonus(20), 0);
+  const fast = Solitaire.timeBonus(60);
+  const slow = Solitaire.timeBonus(300);
+  assert.ok(fast > slow);
+  assert.ok(Number.isInteger(fast));
+});

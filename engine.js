@@ -222,7 +222,27 @@
     return false;
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, isWon, canAutoComplete, autoCompleteStep };
+  function cloneState(state) {
+    return {
+      stock: state.stock.map(c => ({ ...c })),
+      waste: state.waste.map(c => ({ ...c })),
+      foundations: state.foundations.map(f => f.map(c => ({ ...c }))),
+      tableau: state.tableau.map(col => col.map(c => ({ ...c }))),
+      drawCount: state.drawCount,
+      scoringMode: state.scoringMode,
+      timed: state.timed,
+      score: state.score,
+      recycles: state.recycles,
+    };
+  }
+
+  // XP-style time bonus: only for games longer than 30s, rewards speed.
+  function timeBonus(seconds) {
+    if (seconds <= 30) return 0;
+    return Math.floor(700000 / seconds);
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };
