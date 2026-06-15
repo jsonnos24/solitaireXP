@@ -177,7 +177,27 @@
     return state;
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock };
+  // Tries to send the top card of the given source to any legal foundation.
+  // Returns true if a move happened.
+  function autoToFoundation(state, src) {
+    // Normalize tableau source: if cardIndex is undefined, target only the top card
+    if (src.pile === 'tableau' && src.cardIndex === undefined) {
+      const col = state.tableau[src.index];
+      src = { ...src, cardIndex: col.length - 1 };
+    }
+
+    const moving = peekSource(state, src);
+    if (moving.length !== 1) return false;
+    for (let i = 0; i < 4; i++) {
+      if (canStackFoundation(moving[0], state.foundations[i])) {
+        const ok = moveCards(state, src, { pile: 'foundation', index: i });
+        return ok !== null;
+      }
+    }
+    return false;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

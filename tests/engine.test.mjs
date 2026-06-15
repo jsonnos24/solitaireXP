@@ -189,3 +189,26 @@ test('drawStock applies penalty starting on the 4th recycle (100 Draw1, 20 Draw3
   assert.equal(s3.recycles, 4);
   assert.equal(s3.score, 480); // -20 for Draw Three
 });
+
+test('autoToFoundation moves an eligible top card and returns true', () => {
+  const s = tableauState([[C(1, 'H')], [], [], [], [], [], []]);
+  const moved = Solitaire.autoToFoundation(s, { pile: 'tableau', index: 0 });
+  assert.equal(moved, true);
+  assert.equal(s.tableau[0].length, 0);
+  assert.equal(s.foundations.some(f => f.length === 1 && f[0].suit === 'H'), true);
+});
+
+test('autoToFoundation returns false when no foundation accepts the card', () => {
+  const s = tableauState([[C(7, 'H')], [], [], [], [], [], []]);
+  const moved = Solitaire.autoToFoundation(s, { pile: 'tableau', index: 0 });
+  assert.equal(moved, false);
+  assert.equal(s.tableau[0].length, 1);
+});
+
+test('autoToFoundation works from waste', () => {
+  const s = tableauState([[], [], [], [], [], [], []]);
+  s.waste = [C(1, 'S')];
+  const moved = Solitaire.autoToFoundation(s, { pile: 'waste' });
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 0);
+});
