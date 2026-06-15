@@ -77,6 +77,29 @@
   .card.dragging { opacity: .6; }
   #drag-layer { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
   #drag-layer .card { box-shadow: 0 6px 14px rgba(0,0,0,.4); }
+  .dropdown {
+    position: absolute; top: 100%; left: 0; min-width: 160px; z-index: 100;
+    background: #fff; border: 1px solid #aca899; box-shadow: 2px 2px 6px rgba(0,0,0,.3);
+    font-size: 13px;
+  }
+  .dropdown div { padding: 5px 14px; cursor: pointer; }
+  .dropdown div:hover { background: #cfe2ff; }
+  .dropdown hr { border: none; border-top: 1px solid #ddd; margin: 2px 0; }
+  .overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 200;
+    display: grid; place-items: center;
+  }
+  .dialog {
+    background: #ece9d8; border: 2px solid #0831a0; border-radius: 6px;
+    min-width: 280px; font-size: 13px;
+  }
+  .dialog .bar { background: linear-gradient(#2a64d4,#1941a5); color:#fff; font-weight:bold; padding:4px 8px; }
+  .dialog .body { padding: 12px; }
+  .dialog .row { margin: 6px 0; }
+  .dialog button { margin: 8px 4px 0; padding: 3px 14px; }
+  .deck-grid { display: grid; grid-template-columns: repeat(4, 48px); gap: 10px; }
+  .deck-grid .opt { height: 68px; border-radius: 6px; border: 2px solid #fff; cursor: pointer; }
+  .deck-grid .opt.selected { outline: 3px solid #ffd400; }
 </style>
 </head>
 <body>
@@ -193,6 +216,7 @@
       });
       updateStatus();
       felt.appendChild(dragLayer);
+      applyCardBack();
     }
 
     function updateStatus() {
@@ -360,6 +384,117 @@
         pushHistory(); Solitaire.drawStock(state); render();
       }
     });
+
+    const CARD_BACKS = {
+      blue:  'repeating-linear-gradient(45deg,#1b4ea8 0 4px,#3a6fd0 4px 8px)',
+      red:   'repeating-linear-gradient(45deg,#a81b1b 0 4px,#d03a3a 4px 8px)',
+      green: 'radial-gradient(circle at 50% 50%, #2a9d5a 0 5px, #0a7d3e 6px) 0 0/14px 14px, #0a7d3e',
+      purple:'linear-gradient(135deg,#6a3fb5,#b53f9a)',
+    };
+    let cardBack = 'blue';
+
+    function applyCardBack() {
+      const css = CARD_BACKS[cardBack];
+      document.querySelectorAll('.card.back').forEach(el => { el.style.background = css; });
+    }
+
+    function closeMenus() { document.querySelectorAll('.dropdown, .overlay').forEach(n => n.remove()); }
+
+    function openDropdown(anchor, items) {
+      closeMenus();
+      const dd = document.createElement('div');
+      dd.className = 'dropdown';
+      items.forEach(it => {
+        if (it === '-') { dd.appendChild(document.createElement('hr')); return; }
+        const d = document.createElement('div');
+        d.textContent = it.label;
+        d.onclick = (ev) => { ev.stopPropagation(); closeMenus(); it.action(); };
+        dd.appendChild(d);
+      });
+      anchor.appendChild(dd);
+    }
+
+    function dialog(title, bodyEl, onOk) {
+      closeMenus();
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      const dlg = document.createElement('div');
+      dlg.className = 'dialog';
+      const bar = document.createElement('div'); bar.className = 'bar'; bar.textContent = title;
+      const body = document.createElement('div'); body.className = 'body';
+      body.appendChild(bodyEl);
+      const ok = document.createElement('button'); ok.textContent = 'OK';
+      ok.onclick = () => { if (onOk) onOk(); overlay.remove(); };
+      const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+      cancel.onclick = () => overlay.remove();
+      body.append(document.createElement('br'), ok, cancel);
+      dlg.append(bar, body); overlay.appendChild(dlg);
+      document.getElementById('window').appendChild(overlay);
+    }
+
+    document.getElementById('menu-game').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDropdown(e.currentTarget, [
+        { label: 'New Game', action: () => newGame() },
+        { label: 'Undo', action: () => undo() },
+        '-',
+        { label: 'Deck…', action: openDeckPicker },
+        { label: 'Options…', action: openOptions },
+        '-',
+        { label: 'Exit', action: () => { document.getElementById('window').style.display = 'none'; } },
+      ]);
+    });
+
+    document.getElementById('menu-help').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDropdown(e.currentTarget, [
+        { label: 'About Solitaire', action: openAbout },
+      ]);
+    });
+
+    document.addEventListener('click', closeMenus);
+
+    function openDeckPicker() {
+      const grid = document.createElement('div');
+      grid.className = 'deck-grid';
+      let choice = cardBack;
+      Object.entries(CARD_BACKS).forEach(([key, css]) => {
+        const o = document.createElement('div');
+        o.className = 'opt' + (key === cardBack ? ' selected' : '');
+        o.style.background = css;
+        o.onclick = () => {
+          choice = key;
+          grid.querySelectorAll('.opt').forEach(n => n.classList.remove('selected'));
+          o.classList.add('selected');
+        };
+        grid.appendChild(o);
+      });
+      dialog('Select Card Back', grid, () => { cardBack = choice; render(); savePrefs(); });
+    }
+
+    function openOptions() {
+      const wrap = document.createElement('div');
+      wrap.innerHTML =
+        '<div class="row"><label><input type="radio" name="draw" value="1"> Draw One</label> ' +
+        '<label><input type="radio" name="draw" value="3"> Draw Three</label></div>' +
+        '<div class="row"><label><input type="checkbox" id="opt-timed"> Timed game</label></div>';
+      wrap.querySelector('input[value="' + state.drawCount + '"]').checked = true;
+      wrap.querySelector('#opt-timed').checked = state.timed;
+      dialog('Options', wrap, () => {
+        const draw = +wrap.querySelector('input[name="draw"]:checked').value;
+        const timed = wrap.querySelector('#opt-timed').checked;
+        newGame({ drawCount: draw, timed });
+        savePrefs();
+      });
+    }
+
+    function openAbout() {
+      const p = document.createElement('div');
+      p.innerHTML = 'Solitaire — a Windows XP tribute.<br>Klondike, Draw 1 or 3.<br>Built with vanilla HTML/CSS/JS.';
+      dialog('About Solitaire', p, null);
+    }
+
+    function savePrefs() { /* implemented in Task 18 */ }
 
     newGame();
   </script>
