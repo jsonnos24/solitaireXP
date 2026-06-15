@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- Fixed layout-viewport sized to the board; mobile browsers scale it to fit
+     the screen (desktop ignores this), so the whole game fits a phone. -->
+<meta name="viewport" content="width=680, viewport-fit=cover">
+<title>Solitaire</title>
+<style>
+  :root { --felt: #0a7d3e; --felt-dark: #096a35; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #3a6ea5; /* XP desktop blue */
+    font-family: Tahoma, "Segoe UI", sans-serif;
+    -webkit-user-select: none; user-select: none;
+  }
+  #window {
+    position: absolute; inset: 16px;
+    display: flex; flex-direction: column;
+    border: 1px solid #0831a0; border-radius: 8px 8px 0 0;
+    box-shadow: 0 8px 30px rgba(0,0,0,.45); overflow: hidden;
+  }
+  #titlebar {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 6px; color: #fff; font-weight: bold; font-size: 13px;
+    background: linear-gradient(#2a64d4, #1941a5);
+  }
+  #titlebar .spacer { flex: 1; }
+  .winbtn {
+    width: 21px; height: 21px; border-radius: 3px; border: 1px solid #1b3a8a;
+    background: linear-gradient(#5a8de0, #2a5bc0); color: #fff; font-size: 12px;
+    display: grid; place-items: center; cursor: pointer;
+  }
+  .winbtn.close { background: linear-gradient(#e08a5a, #c0402a); }
+  #menubar {
+    display: flex; gap: 2px; padding: 2px 4px; font-size: 13px;
+    background: #ece9d8; border-bottom: 1px solid #aca899;
+  }
+  .menu { padding: 2px 8px; cursor: pointer; position: relative; }
+  .menu:hover { background: #cfe2ff; }
+  #felt {
+    flex: 1; position: relative;
+    background: radial-gradient(circle at 50% 0%, var(--felt), var(--felt-dark));
+    padding: 16px;
+  }
+  #statusbar {
+    display: flex; gap: 24px; padding: 3px 10px; font-size: 12px;
+    background: #ece9d8; border-top: 1px solid #fff;
+  }
+  #statusbar .spacer { flex: 1; }
+  .pile {
+    position: absolute; width: 72px; height: 100px; border-radius: 6px;
+  }
+  .pile.slot { border: 2px dashed rgba(255,255,255,.35); }
+  .card {
+    position: absolute; width: 72px; height: 100px; border-radius: 6px;
+    background: #fff; border: 1px solid #999; box-shadow: 0 1px 2px rgba(0,0,0,.3);
+    font-family: Georgia, "Times New Roman", serif; cursor: pointer;
+  }
+  .card .corner {
+    position: absolute; top: 4px; left: 5px; font-size: 15px; font-weight: bold;
+    line-height: 1; text-align: center;
+  }
+  .card .corner.br {
+    top: auto; left: auto; bottom: 4px; right: 5px; transform: rotate(180deg);
+  }
+  .card .pip {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 34px;
+  }
+  .card.face .pip { font-weight: bold; font-size: 30px; }
+  .card.red { color: #c00; }
+  .card.black { color: #111; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, #1b4ea8 0 4px, #3a6fd0 4px 8px);
+    border: 2px solid #fff;
+  }
+  .card.dragging { opacity: .6; }
+  #drag-layer { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
+  #drag-layer .card { box-shadow: 0 6px 14px rgba(0,0,0,.4); }
+  .dropdown {
+    position: absolute; top: 100%; left: 0; min-width: 160px; z-index: 100;
+    background: #fff; border: 1px solid #aca899; box-shadow: 2px 2px 6px rgba(0,0,0,.3);
+    font-size: 13px;
+  }
+  .dropdown div { padding: 5px 14px; cursor: pointer; }
+  .dropdown div:hover { background: #cfe2ff; }
+  .dropdown hr { border: none; border-top: 1px solid #ddd; margin: 2px 0; }
+  .overlay {
+    position: absolute; inset: 0; background: rgba(0,0,0,.25); z-index: 200;
+    display: grid; place-items: center;
+  }
+  .dialog {
+    background: #ece9d8; border: 2px solid #0831a0; border-radius: 6px;
+    min-width: 280px; font-size: 13px;
+  }
+  .dialog .bar { background: linear-gradient(#2a64d4,#1941a5); color:#fff; font-weight:bold; padding:4px 8px; }
+  .dialog .body { padding: 12px; }
+  .dialog .row { margin: 6px 0; }
+  .dialog button { margin: 8px 4px 0; padding: 3px 14px; }
+  .deck-grid { display: grid; grid-template-columns: repeat(4, 48px); gap: 10px; }
+  .deck-grid .opt { height: 68px; border-radius: 6px; border: 2px solid #fff; cursor: pointer; }
+  .deck-grid .opt.selected { outline: 3px solid #ffd400; }
+  .card.hint, .pile.hint {
+    outline: 3px solid #ffd400; outline-offset: -1px;
+    box-shadow: 0 0 12px 3px rgba(255,212,0,.8); z-index: 40;
+  }
+</style>
+</head>
+<body>
+  <div id="window">
+    <div id="titlebar">
+      <span>&#9824; Solitaire</span>
+      <span class="spacer"></span>
+      <div class="winbtn" title="Minimize">_</div>
+      <div class="winbtn" title="Maximize">&#9633;</div>
+      <div class="winbtn close" title="Close">&times;</div>
+    </div>
+    <div id="menubar">
+      <div class="menu" id="menu-game">Game</div>
+      <div class="menu" id="menu-help">Help</div>
+    </div>
+    <div id="felt"></div>
+    <div id="statusbar">
+      <span id="status-score">Score: 0</span>
+      <span id="status-time">Time: 0</span>
+      <span class="spacer"></span>
+      <span id="status-mode">Draw Three &middot; Standard</span>
+    </div>
+  </div>
+
+  <script>
+  /* ===== inlined engine.js (source of truth: ./engine.js) ===== */
+(function (root) {
+  const SUITS = ['S', 'H', 'D', 'C'];
+
+  function isRed(suit) {
+    return suit === 'H' || suit === 'D';
+  }
+
+  function makeDeck() {
+    const deck = [];
+    for (const suit of SUITS) {
+      for (let rank = 1; rank <= 13; rank++) {
+        deck.push({ rank, suit, faceUp: false });
+      }
+    }
+    return deck;
+  }
+
+  // Mulberry32 — small deterministic PRNG returning [0,1)
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function shuffle(deck, rng) {
+    const a = deck.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  function deal(rng, drawCount) {
+    const deck = shuffle(makeDeck(), rng);
+    const tableau = [[], [], [], [], [], [], []];
+    let idx = 0;
+    for (let col = 0; col < 7; col++) {
+      for (let row = 0; row <= col; row++) {
+        const card = deck[idx++];
+        card.faceUp = row === col;
+        tableau[col].push(card);
+      }
+    }
+    const stock = deck.slice(idx);
+    stock.forEach(c => (c.faceUp = false));
+    return {
+      stock,
+      waste: [],
+      foundations: [[], [], [], []],
+      tableau,
+      drawCount: drawCount === 1 ? 1 : 3,
+      scoringMode: 'standard',
+      timed: false,
+      score: 0,
+      recycles: 0,
+    };
+  }
+
+  function canStackTableau(moving, ontoTop) {
+    if (!ontoTop) return moving.rank === 13;
+    return ontoTop.rank === moving.rank + 1 &&
+           isRed(ontoTop.suit) !== isRed(moving.suit);
+  }
+
+  function canStackFoundation(moving, foundationPile) {
+    const top = foundationPile[foundationPile.length - 1];
+    if (!top) return moving.rank === 1;
+    return top.suit === moving.suit && moving.rank === top.rank + 1;
+  }
+
+  function isValidSequence(cards) {
+    for (let i = 0; i < cards.length; i++) {
+      if (!cards[i].faceUp) return false;
+      if (i > 0 && !canStackTableau(cards[i], cards[i - 1])) return false;
+    }
+    return true;
+  }
+
+  function clampScore(s) { return s < 0 ? 0 : s; }
+
+  function drawStock(state) {
+    if (state.stock.length === 0) {
+      // Recycle: move waste back to stock, face-down.
+      while (state.waste.length) {
+        const c = state.waste.pop();
+        c.faceUp = false;
+        state.stock.push(c);
+      }
+      state.recycles += 1;
+      const penalty = state.drawCount === 1 ? 100 : 20;
+      if (state.recycles > 3) state.score = clampScore(state.score - penalty);
+      return state;
+    }
+    const n = Math.min(state.drawCount, state.stock.length);
+    for (let i = 0; i < n; i++) {
+      const c = state.stock.pop();
+      c.faceUp = true;
+      state.waste.push(c);
+    }
+    return state;
+  }
+
+  function peekSource(state, src) {
+    if (src.pile === 'waste') {
+      const top = state.waste[state.waste.length - 1];
+      return top ? [top] : [];
+    }
+    if (src.pile === 'foundation') {
+      const f = state.foundations[src.index];
+      const top = f[f.length - 1];
+      return top ? [top] : [];
+    }
+    if (src.pile === 'tableau') {
+      return state.tableau[src.index].slice(src.cardIndex);
+    }
+    return [];
+  }
+
+  function destTop(state, dst) {
+    if (dst.pile === 'tableau') {
+      const col = state.tableau[dst.index];
+      return col[col.length - 1] || null;
+    }
+    if (dst.pile === 'foundation') {
+      const f = state.foundations[dst.index];
+      return f[f.length - 1] || null;
+    }
+    return null;
+  }
+
+  function isLegalMove(state, moving, dst) {
+    if (moving.length === 0) return false;
+    if (dst.pile === 'foundation') {
+      if (moving.length !== 1) return false;
+      return canStackFoundation(moving[0], state.foundations[dst.index]);
+    }
+    if (dst.pile === 'tableau') {
+      if (!isValidSequence(moving)) return false;
+      return canStackTableau(moving[0], destTop(state, dst));
+    }
+    return false;
+  }
+
+  function scoreForMove(src, dst) {
+    if (dst.pile === 'foundation') return 10;
+    if (dst.pile === 'tableau' && src.pile === 'waste') return 5;
+    if (dst.pile === 'tableau' && src.pile === 'foundation') return -15;
+    return 0;
+  }
+
+  // Mutates and returns state on success; returns null if the move is illegal.
+  function moveCards(state, src, dst) {
+    const moving = peekSource(state, src);
+    if (!isLegalMove(state, moving, dst)) return null;
+
+    if (src.pile === 'waste') state.waste.pop();
+    else if (src.pile === 'foundation') state.foundations[src.index].pop();
+    else if (src.pile === 'tableau') state.tableau[src.index].splice(src.cardIndex);
+
+    if (dst.pile === 'tableau') state.tableau[dst.index].push(...moving);
+    else if (dst.pile === 'foundation') state.foundations[dst.index].push(moving[0]);
+
+    let delta = scoreForMove(src, dst);
+
+    if (src.pile === 'tableau') {
+      const col = state.tableau[src.index];
+      const top = col[col.length - 1];
+      if (top && !top.faceUp) { top.faceUp = true; delta += 5; }
+    }
+
+    state.score = clampScore(state.score + delta);
+    return state;
+  }
+
+  // Tries to send the top card of the given source to any legal foundation.
+  // Returns true if a move happened.
+  function autoToFoundation(state, src) {
+    // Normalize tableau source: if cardIndex is undefined, target only the top card
+    if (src.pile === 'tableau' && src.cardIndex === undefined) {
+      const col = state.tableau[src.index];
+      src = { ...src, cardIndex: col.length - 1 };
+    }
+
+    const moving = peekSource(state, src);
+    if (moving.length !== 1) return false;
+    for (let i = 0; i < 4; i++) {
+      if (canStackFoundation(moving[0], state.foundations[i])) {
+        const ok = moveCards(state, src, { pile: 'foundation', index: i });
+        return ok !== null;
+      }
+    }
+    return false;
+  }
+
+  // Smart auto-move for double/right-click: send the clicked card (and any valid
+  // run below it) to the best legal spot — foundation first, then a tableau build
+  // onto a non-empty column. Empty columns are skipped to avoid surprising moves.
+  // Returns true if a move happened.
+  function autoPlace(state, src) {
+    if (src.pile === 'tableau' && src.cardIndex === undefined) {
+      const col = state.tableau[src.index];
+      src = { ...src, cardIndex: col.length - 1 };
+    }
+
+    const moving = peekSource(state, src);
+    if (moving.length === 0) return false;
+    if (src.pile === 'tableau' && !isValidSequence(moving)) return false;
+
+    // 1) Foundation — only a single card can go to a foundation.
+    if (moving.length === 1) {
+      for (let i = 0; i < 4; i++) {
+        if (canStackFoundation(moving[0], state.foundations[i])) {
+          return moveCards(state, src, { pile: 'foundation', index: i }) !== null;
+        }
+      }
+    }
+
+    // 2) Tableau build. A non-empty column must accept the run; an empty column
+    //    accepts only a King. Skip pointlessly relocating a whole face-up column
+    //    (no face-down beneath) to another empty column.
+    for (let i = 0; i < 7; i++) {
+      if (src.pile === 'tableau' && i === src.index) continue; // don't move onto itself
+      const col = state.tableau[i];
+      const top = col.length ? col[col.length - 1] : null;
+      if (!canStackTableau(moving[0], top)) continue;
+      if (top === null && src.pile === 'tableau' && src.cardIndex === 0) continue;
+      return moveCards(state, src, { pile: 'tableau', index: i }) !== null;
+    }
+    return false;
+  }
+
+  // Right-clicking empty space auto-advances: play the best available move.
+  // Foundations first (waste top, then tableau tops), then a tableau build —
+  // the waste top, then the longest movable run of each column — onto a matching
+  // non-empty column (e.g. a red 8-run onto a black 9). Returns true if moved.
+  function autoAdvance(state) {
+    if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) return true;
+    for (let i = 0; i < 7; i++) {
+      if (state.tableau[i].length && autoToFoundation(state, { pile: 'tableau', index: i })) return true;
+    }
+    if (state.waste.length && autoPlace(state, { pile: 'waste' })) return true;
+    for (let i = 0; i < 7; i++) {
+      const col = state.tableau[i];
+      if (!col.length) continue;
+      let k = col.length - 1; // walk down to the start of the longest movable run
+      while (k > 0 && col[k - 1].faceUp && canStackTableau(col[k], col[k - 1])) k--;
+      if (autoPlace(state, { pile: 'tableau', index: i, cardIndex: k })) return true;
+    }
+    return false;
+  }
+
+  function isWon(state) {
+    return state.foundations.every(f => f.length === 13);
+  }
+
+  function canAutoComplete(state) {
+    if (isWon(state)) return false;
+    if (state.stock.length > 0 || state.waste.length > 0) return false;
+    return state.tableau.every(col => col.every(c => c.faceUp));
+  }
+
+  // Performs a single auto-complete move (tableau or waste top → foundation).
+  // Returns true if a card was placed, false when no move is available.
+  function autoCompleteStep(state) {
+    for (let i = 0; i < 7; i++) {
+      if (state.tableau[i].length &&
+          autoToFoundation(state, { pile: 'tableau', index: i })) {
+        return true;
+      }
+    }
+    if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) {
+      return true;
+    }
+    return false;
+  }
+
+  function cloneState(state) {
+    return {
+      stock: state.stock.map(c => ({ ...c })),
+      waste: state.waste.map(c => ({ ...c })),
+      foundations: state.foundations.map(f => f.map(c => ({ ...c }))),
+      tableau: state.tableau.map(col => col.map(c => ({ ...c }))),
+      drawCount: state.drawCount,
+      scoringMode: state.scoringMode,
+      timed: state.timed,
+      score: state.score,
+      recycles: state.recycles,
+    };
+  }
+
+  // XP-style time bonus: only for games longer than 30s, rewards speed.
+  function timeBonus(seconds) {
+    if (seconds <= 30) return 0;
+    return Math.floor(700000 / seconds);
+  }
+
+  // ---------- Solver (used to generate guaranteed-winnable deals) ----------
+  // Soundness over completeness: if isWinnable returns true a real winning line
+  // exists. It may give up (return false) on hard/over-budget deals — that's fine,
+  // the caller just reshuffles and tries another deal.
+
+  function foundationRank(state, suit) {
+    for (const f of state.foundations) {
+      if (f.length && f[0].suit === suit) return f[f.length - 1].rank;
+    }
+    return 0;
+  }
+
+  // A card is safe to force onto a foundation when it can never be needed to
+  // receive a lower card of the opposite color (classic Microsoft autoplay rule).
+  function isSafeToFoundation(state, card) {
+    if (card.rank <= 2) return true;
+    const opp = isRed(card.suit) ? ['S', 'C'] : ['H', 'D'];
+    const oppMin = Math.min(foundationRank(state, opp[0]), foundationRank(state, opp[1]));
+    return oppMin >= card.rank - 1;
+  }
+
+  // Deterministically play all currently-safe cards to the foundations.
+  // Play all currently-safe cards to the foundations, recording each as a
+  // replayable descriptor in `log` (used by solve() to return a full move list).
+  function forcedAutoplayLog(state, log) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      if (state.waste.length) {
+        const c = state.waste[state.waste.length - 1];
+        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { log.push({ t: 'wf' }); changed = true; continue; }
+      }
+      for (let i = 0; i < 7; i++) {
+        const col = state.tableau[i];
+        if (!col.length) continue;
+        const c = col[col.length - 1];
+        if (c.faceUp && isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'tableau', index: i })) {
+          log.push({ t: 'tf', i }); changed = true; break;
+        }
+      }
+    }
+  }
+  function forcedAutoplay(state) { forcedAutoplayLog(state, []); }
+
+  // Canonical key for the transposition table. Tableau columns are sorted so that
+  // column permutations collapse to one state.
+  function canonicalKey(state) {
+    const cols = state.tableau
+      .map(col => col.map(c => (c.faceUp ? '+' : '-') + c.rank + c.suit).join(','))
+      .sort().join('|');
+    const f = state.foundations
+      .map(p => (p.length ? p[0].suit + p[p.length - 1].rank : '_')).sort().join(',');
+    const stock = state.stock.map(c => c.rank + c.suit).join(',');
+    const waste = state.waste.map(c => c.rank + c.suit).join(',');
+    return cols + '#' + f + '#' + stock + '#' + waste + '#' + state.drawCount;
+  }
+
+  // Generate successors as { c: childState, desc: replayableMove }, ordered
+  // best-first (lower priority = tried first). The child has the explicit move
+  // applied but NOT the subsequent safe autoplay (the caller does that).
+  // Descriptor forms: {t:'wf'} {t:'tf',i} {t:'wt',j} {t:'tt',i,ci,j} {t:'draw'}.
+  function genMovesDesc(state) {
+    const out = [];
+    const add = (c, desc, priority) => { if (c) out.push({ c, desc, priority }); };
+
+    // Non-safe foundation moves (safe ones are already auto-played): waste + tableau tops.
+    if (state.waste.length) {
+      const c = cloneState(state);
+      if (autoToFoundation(c, { pile: 'waste' })) add(c, { t: 'wf' }, 1);
+    }
+    for (let i = 0; i < 7; i++) {
+      if (!state.tableau[i].length) continue;
+      const c = cloneState(state);
+      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, { t: 'tf', i }, 1);
+    }
+
+    // Waste top → tableau build.
+    if (state.waste.length) {
+      const wc = state.waste[state.waste.length - 1];
+      for (let j = 0; j < 7; j++) {
+        const dcol = state.tableau[j];
+        const dtop = dcol.length ? dcol[dcol.length - 1] : null;
+        if (!canStackTableau(wc, dtop)) continue;
+        const c = cloneState(state);
+        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, { t: 'wt', j }, 2);
+      }
+    }
+
+    // Tableau run → tableau (any face-up suffix onto a matching column).
+    for (let i = 0; i < 7; i++) {
+      const col = state.tableau[i];
+      let f = col.length;
+      for (let x = 0; x < col.length; x++) { if (col[x].faceUp) { f = x; break; } }
+      for (let s = f; s < col.length; s++) {
+        const card = col[s];
+        const flips = s > 0 && !col[s - 1].faceUp;
+        for (let j = 0; j < 7; j++) {
+          if (j === i) continue;
+          const dcol = state.tableau[j];
+          const dtop = dcol.length ? dcol[dcol.length - 1] : null;
+          if (!canStackTableau(card, dtop)) continue;
+          if (dcol.length === 0 && s === f && f === 0) continue; // relocating a whole column to empty = useless
+          const c = cloneState(state);
+          if (moveCards(c, { pile: 'tableau', index: i, cardIndex: s }, { pile: 'tableau', index: j }) !== null) {
+            add(c, { t: 'tt', i, ci: s, j }, flips ? 0 : 2);
+          }
+        }
+      }
+    }
+
+    // Draw / recycle (lowest priority).
+    if (state.stock.length > 0) {
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 3);
+    } else if (state.waste.length > 0) {
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 4);
+    }
+
+    out.sort((a, b) => a.priority - b.priority);
+    return out;
+  }
+
+  function genMoves(state) { return genMovesDesc(state).map(o => o.c); }
+
+  // Resumable iterative depth-first search with a transposition table and a node
+  // budget. `step(slice)` advances up to `slice` node expansions and returns
+  // 'win' | 'fail' | 'pending', so a caller can spread a search across many
+  // animation/timeout slices without blocking the UI thread.
+  function makeSolver(initial, maxNodes = 200000) {
+    let nodes = 0;
+    let finished = false, won = false;
+    const visited = new Set();
+    const root = cloneState(initial);
+    forcedAutoplay(root);
+    let stack = null;
+    if (isWon(root)) { finished = true; won = true; }
+    else { visited.add(canonicalKey(root)); stack = [{ moves: genMoves(root), i: 0 }]; }
+    return {
+      step(slice = 8000) {
+        if (finished) return won ? 'win' : 'fail';
+        let used = 0;
+        while (stack.length) {
+          if (++nodes > maxNodes) { finished = true; return 'fail'; }
+          if (++used > slice) return 'pending';
+          const top = stack[stack.length - 1];
+          if (top.i >= top.moves.length) { stack.pop(); continue; }
+          const next = top.moves[top.i++];
+          forcedAutoplay(next);
+          if (isWon(next)) { finished = true; won = true; return 'win'; }
+          const key = canonicalKey(next);
+          if (visited.has(key)) continue;
+          visited.add(key);
+          stack.push({ moves: genMoves(next), i: 0 });
+        }
+        finished = true;
+        return 'fail';
+      },
+    };
+  }
+
+  // Synchronous convenience wrapper: true if a winning line exists within budget.
+  function isWinnable(initial, maxNodes = 200000) {
+    const solver = makeSolver(initial, maxNodes);
+    let r;
+    do { r = solver.step(Infinity); } while (r === 'pending');
+    return r === 'win';
+  }
+
+  // Find a winning move sequence from `initial`, or null if none within budget.
+  // The result is an array of replayable descriptors (see genMovesDesc) that can
+  // be applied with applyMove() in order to reach a completed game. Used by the
+  // UI's Hint and Auto-solve. Operates on the CURRENT position, so it returns
+  // null when the player has already played into a dead end.
+  function solve(initial, maxNodes = 600000) {
+    let nodes = 0;
+    const visited = new Set();
+    const root = cloneState(initial);
+    const rootLog = [];
+    forcedAutoplayLog(root, rootLog);
+    if (isWon(root)) return rootLog;
+    visited.add(canonicalKey(root));
+    const stack = [{ gen: genMovesDesc(root), i: 0, path: rootLog }];
+    while (stack.length) {
+      if (++nodes > maxNodes) return null;
+      const top = stack[stack.length - 1];
+      if (top.i >= top.gen.length) { stack.pop(); continue; }
+      const mv = top.gen[top.i++];
+      const child = mv.c;                 // explicit move already applied
+      const log = [mv.desc];
+      forcedAutoplayLog(child, log);      // record the safe autoplays that follow
+      const path = top.path.concat(log);
+      if (isWon(child)) return path;
+      const key = canonicalKey(child);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      stack.push({ gen: genMovesDesc(child), i: 0, path });
+    }
+    return null;
+  }
+
+  // Apply a single solver descriptor to a live state using public operations.
+  // Returns the state (mutated) or null if the move was not legal.
+  function applyMove(state, d) {
+    if (d.t === 'draw') return drawStock(state);
+    if (d.t === 'wf') return autoToFoundation(state, { pile: 'waste' }) ? state : null;
+    if (d.t === 'tf') return autoToFoundation(state, { pile: 'tableau', index: d.i }) ? state : null;
+    if (d.t === 'wt') return moveCards(state, { pile: 'waste' }, { pile: 'tableau', index: d.j });
+    if (d.t === 'tt') return moveCards(state, { pile: 'tableau', index: d.i, cardIndex: d.ci }, { pile: 'tableau', index: d.j });
+    return null;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver, solve, applyMove };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { Solitaire };
+  } else {
+    root.Solitaire = Solitaire;
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+  </script>
+  <script>
+    const RANKS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+    const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
+    const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+
+    const felt = document.getElementById('felt');
+    const dragLayer = document.createElement('div');
+    dragLayer.id = 'drag-layer';
+    let state = null;
+    let history = [];
+
+    function rankLabel(r) { return RANKS[r] || String(r); }
+
+    function cardEl(card) {
+      const el = document.createElement('div');
+      el.className = 'card ' + (Solitaire.isRed(card.suit) ? 'red' : 'black');
+      if (!card.faceUp) { el.className = 'card back'; return el; }
+      if (card.rank > 10) el.classList.add('face');
+      const label = rankLabel(card.rank) + '\n' + SUIT_GLYPH[card.suit];
+      const tl = document.createElement('div');
+      tl.className = 'corner';
+      tl.style.whiteSpace = 'pre';
+      tl.textContent = label;
+      const br = document.createElement('div');
+      br.className = 'corner br';
+      br.style.whiteSpace = 'pre';
+      br.textContent = label;
+      const pip = document.createElement('div');
+      pip.className = 'pip';
+      pip.textContent = card.rank > 10 ? rankLabel(card.rank) : SUIT_GLYPH[card.suit];
+      el.append(tl, br, pip);
+      return el;
+    }
+
+    function place(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+
+    function slot(x, y) {
+      const s = document.createElement('div');
+      s.className = 'pile slot';
+      place(s, x, y);
+      return s;
+    }
+
+    function render() {
+      felt.innerHTML = '';
+      felt.appendChild(slot(GAP, TOP));
+      felt.appendChild(slot(GAP + COL_W, TOP));
+      for (let i = 0; i < 4; i++) {
+        const fs = slot(GAP + (3 + i) * COL_W, TOP);
+        fs.dataset.pile = 'foundation'; fs.dataset.index = i;
+        felt.appendChild(fs);
+      }
+
+      if (state.stock.length) {
+        const b = cardEl({ rank: 0, suit: 'S', faceUp: false });
+        place(b, GAP, TOP); b.dataset.pile = 'stock';
+        felt.appendChild(b);
+      } else {
+        const r = slot(GAP, TOP); r.dataset.pile = 'stock';
+        r.style.cursor = 'pointer'; r.textContent = '';
+        felt.appendChild(r);
+      }
+      if (state.waste.length) {
+        const fan = state.drawCount === 3 ? 3 : 1;
+        const shown = state.waste.slice(Math.max(0, state.waste.length - fan));
+        const FAN_X = 18;
+        shown.forEach((c, k) => {
+          const el = cardEl(c);
+          place(el, GAP + COL_W + k * FAN_X, TOP);
+          if (k === shown.length - 1) el.dataset.pile = 'waste';
+          felt.appendChild(el);
+        });
+      }
+      state.foundations.forEach((f, i) => {
+        if (f.length) {
+          const el = cardEl(f[f.length - 1]);
+          place(el, GAP + (3 + i) * COL_W, TOP);
+          el.dataset.pile = 'foundation'; el.dataset.index = i;
+          felt.appendChild(el);
+        }
+      });
+      const tableauTop = TOP + 120;
+      state.tableau.forEach((col, ci) => {
+        const x = GAP + ci * COL_W;
+        const ts = slot(x, tableauTop);
+        ts.dataset.pile = 'tableau'; ts.dataset.index = ci;
+        felt.appendChild(ts);
+        col.forEach((card, ri) => {
+          const el = cardEl(card);
+          place(el, x, tableauTop + ri * ROW);
+          el.dataset.pile = 'tableau'; el.dataset.index = ci; el.dataset.cardIndex = ri;
+          felt.appendChild(el);
+        });
+      });
+      updateStatus();
+      felt.appendChild(dragLayer);
+      applyCardBack();
+    }
+
+    function updateStatus() {
+      document.getElementById('status-score').textContent = 'Score: ' + state.score;
+      document.getElementById('status-mode').textContent =
+        (state.drawCount === 1 ? 'Draw One' : 'Draw Three') +
+        ' · ' + (state.timed ? 'Timed' : 'Standard');
+    }
+
+    // ----- Winnable-only deals with a background preload buffer -----
+    let winnableOnly = true;          // verify every deal is solvable before playing
+    let currentDraw = 3;              // draw mode of the active/looked-up game
+    let searching = false;            // a foreground (overlay) search is running
+    let refillScheduled = false;
+    const winnableBuffer = { 1: [], 3: [] }; // pre-verified winnable seeds per draw mode
+    const BUFFER_TARGET = 5;
+    const SOLVE_BUDGET = 200000;      // solver node budget per candidate deal
+    const SLICE = 3000;               // node expansions per timeout tick (keeps UI smooth)
+
+    function randomSeed() { return (Math.random() * 2 ** 32) >>> 0; }
+
+    function applyDeal(seed, drawCount, timed) {
+      stopWinAnimation();
+      state = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
+      state.timed = timed;
+      history = [];
+      render();
+      startTimer();
+    }
+
+    // Top up the winnable buffer for the current draw mode in small solver slices
+    // so the UI never blocks. Carries one candidate solver across ticks.
+    let refillSolver = null, refillSeed = 0, refillDraw = 3;
+    function scheduleRefill() {
+      if (refillScheduled || !winnableOnly) return;
+      refillScheduled = true;
+      setTimeout(pumpRefill, 0);
+    }
+    function pumpRefill() {
+      refillScheduled = false;
+      if (!winnableOnly) { refillSolver = null; return; }
+      const dc = currentDraw;
+      if (winnableBuffer[dc].length >= BUFFER_TARGET) { refillSolver = null; return; }
+      if (searching) { refillScheduled = true; setTimeout(pumpRefill, 150); return; } // yield to foreground
+      if (!refillSolver) {
+        refillSeed = randomSeed();
+        refillDraw = dc;
+        refillSolver = Solitaire.makeSolver(Solitaire.deal(Solitaire.makeRng(refillSeed), dc), SOLVE_BUDGET);
+      }
+      const r = refillSolver.step(SLICE);
+      if (r === 'win') { winnableBuffer[refillDraw].push(refillSeed); refillSolver = null; }
+      else if (r === 'fail') { refillSolver = null; }
+      refillScheduled = true;
+      setTimeout(pumpRefill, 0);
+    }
+
+    function newGame(opts = {}) {
+      const drawCount = opts.drawCount || (state ? state.drawCount : 3);
+      const timed = opts.timed != null ? opts.timed : (state ? state.timed : false);
+      currentDraw = drawCount;
+      if (!winnableOnly) { applyDeal(randomSeed(), drawCount, timed); return; }
+      const q = winnableBuffer[drawCount];
+      if (q && q.length) { applyDeal(q.shift(), drawCount, timed); scheduleRefill(); return; }
+      foregroundSearch(drawCount, timed); // buffer empty → search now with an overlay
+    }
+
+    function foregroundSearch(drawCount, timed) {
+      searching = true;
+      showSearching();
+      stopTimer();
+      let tries = 0, seed = 0, solver = null;
+      const MAX_TRIES = 800;
+      const finish = (s) => {
+        searching = false; hideSearching();
+        applyDeal(s, drawCount, timed);
+        scheduleRefill();
+      };
+      const step = () => {
+        if (!solver) {
+          seed = randomSeed();
+          solver = Solitaire.makeSolver(Solitaire.deal(Solitaire.makeRng(seed), drawCount), SOLVE_BUDGET);
+        }
+        const r = solver.step(SLICE);
+        if (r === 'win') { finish(seed); return; }
+        if (r === 'fail') { solver = null; if (++tries >= MAX_TRIES) { finish(seed); return; } }
+        setTimeout(step, 0);
+      };
+      setTimeout(step, 0);
+    }
+
+    function showSearching(label = 'Finding a winnable game…') {
+      hideSearching();
+      const o = document.createElement('div');
+      o.id = 'searching';
+      o.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.25);z-index:200;display:grid;place-items:center';
+      o.addEventListener('click', e => e.stopPropagation());
+      o.innerHTML = '<div class="dialog"><div class="bar">Solitaire</div>' +
+        '<div class="body">' + label + '</div></div>';
+      document.getElementById('window').appendChild(o);
+    }
+    function hideSearching() {
+      const o = document.getElementById('searching');
+      if (o) o.remove();
+    }
+
+    // ----- Hint & Auto-solve (solver-powered) -----
+    const SOLVE_LIMIT = 600000;
+
+    function clearHints() { felt.querySelectorAll('.hint').forEach(e => e.classList.remove('hint')); }
+
+    function topTableauEl(j) {
+      const cards = [...felt.querySelectorAll('.card[data-pile="tableau"][data-index="' + j + '"]')];
+      if (cards.length) return cards.reduce((a, b) => (+b.dataset.cardIndex > +a.dataset.cardIndex ? b : a));
+      return felt.querySelector('.pile[data-pile="tableau"][data-index="' + j + '"]');
+    }
+
+    function highlightMove(d) {
+      clearHints();
+      const mark = el => { if (el) el.classList.add('hint'); };
+      if (d.t === 'draw') mark(felt.querySelector('[data-pile="stock"]'));
+      else if (d.t === 'wf') mark(felt.querySelector('.card[data-pile="waste"]'));
+      else if (d.t === 'wt') { mark(felt.querySelector('.card[data-pile="waste"]')); mark(topTableauEl(d.j)); }
+      else if (d.t === 'tf') mark(topTableauEl(d.i));
+      else if (d.t === 'tt') {
+        mark(felt.querySelector('.card[data-pile="tableau"][data-index="' + d.i + '"][data-card-index="' + d.ci + '"]'));
+        mark(topTableauEl(d.j));
+      }
+      setTimeout(clearHints, 2400);
+    }
+
+    function infoDialog(title, text) {
+      const p = document.createElement('div');
+      p.innerHTML = text;
+      dialog(title, p, null);
+    }
+
+    function hint() {
+      if (document.querySelector('.overlay') || document.getElementById('searching') || drag) return;
+      showSearching('Thinking…');
+      setTimeout(() => {
+        const path = Solitaire.solve(Solitaire.cloneState(state), SOLVE_LIMIT);
+        hideSearching();
+        if (!path || !path.length) {
+          infoDialog('Hint', 'No winning move from this position. Press Ctrl+Z to undo and try a different line.');
+          return;
+        }
+        highlightMove(path[0]);
+      }, 20);
+    }
+
+    function autoSolve() {
+      if (document.querySelector('.overlay') || document.getElementById('searching') || drag) return;
+      showSearching('Solving…');
+      setTimeout(() => {
+        const path = Solitaire.solve(Solitaire.cloneState(state), SOLVE_LIMIT);
+        hideSearching();
+        if (!path) {
+          infoDialog('Solve', 'No winning sequence from the current position. Press Ctrl+Z to undo and try a different line.');
+          return;
+        }
+        let k = 0;
+        const tick = () => {
+          if (k >= path.length) { if (Solitaire.isWon(state)) winGame(); return; }
+          pushHistory();
+          Solitaire.applyMove(state, path[k++]);
+          render();
+          setTimeout(tick, 130);
+        };
+        tick();
+      }, 20);
+    }
+
+    function pushHistory() { history.push(Solitaire.cloneState(state)); }
+
+    felt.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-pile]');
+      if (!el) return;
+      if (el.dataset.pile === 'stock') {
+        pushHistory();
+        Solitaire.drawStock(state);
+        render();
+      }
+    });
+
+    let drag = null; // { cards, src, els, dx, dy }
+
+    function sourceFromEl(el) {
+      const p = el.dataset.pile;
+      if (p === 'waste') return { pile: 'waste' };
+      if (p === 'foundation') return { pile: 'foundation', index: +el.dataset.index };
+      if (p === 'tableau') return { pile: 'tableau', index: +el.dataset.index, cardIndex: +el.dataset.cardIndex };
+      return null;
+    }
+
+    function movingCards(src) {
+      if (src.pile === 'waste') {
+        const c = state.waste[state.waste.length - 1];
+        return c ? [c] : [];
+      }
+      if (src.pile === 'foundation') {
+        const f = state.foundations[src.index];
+        const c = f[f.length - 1];
+        return c ? [c] : [];
+      }
+      if (src.pile === 'tableau') {
+        return state.tableau[src.index].slice(src.cardIndex);
+      }
+      return [];
+    }
+
+    felt.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; // only the primary button starts a drag; let right-click reach contextmenu
+      const el = e.target.closest('.card');
+      if (!el || el.classList.contains('back')) return;
+      if (el.dataset.pile === 'stock') return;
+      const src = sourceFromEl(el);
+      if (!src) return;
+      const cards = movingCards(src);
+      if (cards.length === 0) return;
+      if (src.pile === 'tableau' && !Solitaire.isValidSequence(cards)) return;
+
+      const feltRect = felt.getBoundingClientRect();
+      const startX = e.clientX - feltRect.left;
+      const startY = e.clientY - feltRect.top;
+      const baseTop = parseFloat(el.style.top);
+      const baseLeft = parseFloat(el.style.left);
+
+      drag = { cards, src, els: [], dx: startX - baseLeft, dy: startY - baseTop,
+               startX: e.clientX, startY: e.clientY, moved: false };
+      cards.forEach((card, i) => {
+        const ce = cardEl(card);
+        ce.style.left = baseLeft + 'px';
+        ce.style.top = (baseTop + i * ROW) + 'px';
+        dragLayer.appendChild(ce);
+        drag.els.push({ ce, offset: i * ROW });
+      });
+      felt.querySelectorAll('.card').forEach(c => {
+        if (c.dataset.pile !== src.pile) return;
+        if (src.pile === 'tableau') {
+          if (+c.dataset.index !== src.index) return;
+          if (+c.dataset.cardIndex < src.cardIndex) return;
+        } else if (src.pile === 'foundation') {
+          if (+c.dataset.index !== src.index) return;
+        }
+        if (!dragLayer.contains(c)) c.style.visibility = 'hidden';
+      });
+      felt.setPointerCapture(e.pointerId);
+    });
+
+    felt.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 5) drag.moved = true;
+      const r = felt.getBoundingClientRect();
+      const x = e.clientX - r.left - drag.dx;
+      const y = e.clientY - r.top - drag.dy;
+      drag.els.forEach(({ ce, offset }) => { ce.style.left = x + 'px'; ce.style.top = (y + offset) + 'px'; });
+    });
+
+    function pileAtPoint(x, y) {
+      const els = document.elementsFromPoint(x, y);
+      for (const el of els) {
+        const t = el.closest('[data-pile]');
+        if (t && t.dataset.pile !== 'stock' && !dragLayer.contains(t)) {
+          if (t.dataset.pile === 'foundation') return { pile: 'foundation', index: +t.dataset.index };
+          if (t.dataset.pile === 'tableau') return { pile: 'tableau', index: +t.dataset.index };
+        }
+      }
+      return null;
+    }
+
+    felt.addEventListener('pointerup', (e) => {
+      if (!drag) return;
+      const wasDrag = drag.moved;
+      const src = drag.src;
+      const point = { x: e.clientX, y: e.clientY };
+      drag.els.forEach(({ ce }) => ce.remove());
+      drag = null;
+
+      let moved = false;
+      if (wasDrag) {
+        // Deliberate drag → drop on the pile under the pointer.
+        const target = pileAtPoint(point.x, point.y);
+        if (target) {
+          pushHistory();
+          if (Solitaire.moveCards(state, src, target)) moved = true; else history.pop();
+        }
+      } else if (src.pile !== 'foundation') {
+        // Tap (no movement) → smart auto-move, like double/right-click.
+        pushHistory();
+        if (Solitaire.autoPlace(state, src)) moved = true; else history.pop();
+      }
+      render();
+      if (moved) afterMove();
+    });
+
+    let autoCompleteTimer = null;
+    function afterMove() {
+      if (Solitaire.canAutoComplete(state)) { runAutoComplete(); return; }
+      if (Solitaire.isWon(state)) winGame();
+    }
+
+    function runAutoComplete() {
+      autoCompleteTimer = setInterval(() => {
+        const moved = Solitaire.autoCompleteStep(state);
+        render();
+        if (!moved) {
+          clearInterval(autoCompleteTimer); autoCompleteTimer = null;
+          if (Solitaire.isWon(state)) winGame();
+        }
+      }, 120);
+    }
+
+    function winGame() {
+      stopTimer();
+      if (state.timed) {
+        state.score += Solitaire.timeBonus(elapsed);
+        updateStatus();
+      }
+      startWinAnimation();
+    }
+
+    function tryAutoMove(el) {
+      const src = sourceFromEl(el);
+      if (!src) return;
+      pushHistory();
+      if (Solitaire.autoPlace(state, src)) { render(); afterMove(); }
+      else history.pop();
+    }
+
+    function tryAutoAdvance() {
+      pushHistory();
+      if (Solitaire.autoAdvance(state)) { render(); afterMove(); }
+      else history.pop();
+    }
+
+    function isMovableCard(el) {
+      return el && el.classList.contains('card') &&
+        !el.classList.contains('back') && el.dataset.pile !== 'stock';
+    }
+
+    // Note: a single tap on a card already auto-moves it (see pointerup), which
+    // also covers the old double-click behavior — so no dblclick handler.
+
+    felt.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const el = e.target.closest('.card');
+      // Right-click a movable card → smart place that card; right-click anywhere
+      // else (empty felt, a face-down card, the stock) → auto-advance one move.
+      if (isMovableCard(el)) tryAutoMove(el);
+      else tryAutoAdvance();
+    });
+
+    function undo() {
+      if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
+      if (!history.length) return;
+      state = history.pop();
+      render();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F2') { e.preventDefault(); newGame(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
+      else if (e.key === ' ' || e.key === 'Enter') {
+        if (drag || document.querySelector('.overlay')) return;
+        e.preventDefault();
+        pushHistory(); Solitaire.drawStock(state); render();
+      }
+      else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); hint(); }
+    });
+
+    const CARD_BACKS = {
+      blue:  'repeating-linear-gradient(45deg,#1b4ea8 0 4px,#3a6fd0 4px 8px)',
+      red:   'repeating-linear-gradient(45deg,#a81b1b 0 4px,#d03a3a 4px 8px)',
+      green: 'radial-gradient(circle at 50% 50%, #2a9d5a 0 5px, #0a7d3e 6px) 0 0/14px 14px, #0a7d3e',
+      purple:'linear-gradient(135deg,#6a3fb5,#b53f9a)',
+    };
+    let cardBack = 'blue';
+
+    function applyCardBack() {
+      const css = CARD_BACKS[cardBack];
+      document.querySelectorAll('.card.back').forEach(el => { el.style.background = css; });
+    }
+
+    function closeMenus() { document.querySelectorAll('.dropdown, .overlay').forEach(n => n.remove()); }
+
+    function openDropdown(anchor, items) {
+      closeMenus();
+      const dd = document.createElement('div');
+      dd.className = 'dropdown';
+      items.forEach(it => {
+        if (it === '-') { dd.appendChild(document.createElement('hr')); return; }
+        const d = document.createElement('div');
+        d.textContent = it.label;
+        d.onclick = (ev) => { ev.stopPropagation(); closeMenus(); it.action(); };
+        dd.appendChild(d);
+      });
+      anchor.appendChild(dd);
+    }
+
+    function dialog(title, bodyEl, onOk) {
+      closeMenus();
+      const overlay = document.createElement('div');
+      overlay.className = 'overlay';
+      overlay.addEventListener('click', e => e.stopPropagation());
+      const dlg = document.createElement('div');
+      dlg.className = 'dialog';
+      const bar = document.createElement('div'); bar.className = 'bar'; bar.textContent = title;
+      const body = document.createElement('div'); body.className = 'body';
+      body.appendChild(bodyEl);
+      const ok = document.createElement('button'); ok.textContent = 'OK';
+      ok.onclick = () => { if (onOk) onOk(); overlay.remove(); };
+      const cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+      cancel.onclick = () => overlay.remove();
+      body.append(document.createElement('br'), ok, cancel);
+      dlg.append(bar, body); overlay.appendChild(dlg);
+      document.getElementById('window').appendChild(overlay);
+    }
+
+    document.getElementById('menu-game').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDropdown(e.currentTarget, [
+        { label: 'New Game  (F2)', action: () => newGame() },
+        { label: 'Undo  (Ctrl+Z)', action: () => undo() },
+        '-',
+        { label: 'Hint  (H)', action: hint },
+        { label: 'Solve', action: autoSolve },
+        '-',
+        { label: 'Deck…', action: openDeckPicker },
+        { label: 'Options…', action: openOptions },
+        '-',
+        { label: 'Exit', action: () => { document.getElementById('window').style.display = 'none'; } },
+      ]);
+    });
+
+    document.getElementById('menu-help').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openDropdown(e.currentTarget, [
+        { label: 'About Solitaire', action: openAbout },
+      ]);
+    });
+
+    document.addEventListener('click', closeMenus);
+
+    function openDeckPicker() {
+      const grid = document.createElement('div');
+      grid.className = 'deck-grid';
+      let choice = cardBack;
+      Object.entries(CARD_BACKS).forEach(([key, css]) => {
+        const o = document.createElement('div');
+        o.className = 'opt' + (key === cardBack ? ' selected' : '');
+        o.style.background = css;
+        o.onclick = () => {
+          choice = key;
+          grid.querySelectorAll('.opt').forEach(n => n.classList.remove('selected'));
+          o.classList.add('selected');
+        };
+        grid.appendChild(o);
+      });
+      dialog('Select Card Back', grid, () => { cardBack = choice; render(); savePrefs(); });
+    }
+
+    function openOptions() {
+      const wrap = document.createElement('div');
+      wrap.innerHTML =
+        '<div class="row"><label><input type="radio" name="draw" value="1"> Draw One</label> ' +
+        '<label><input type="radio" name="draw" value="3"> Draw Three</label></div>' +
+        '<div class="row"><label><input type="checkbox" id="opt-timed"> Timed game</label></div>' +
+        '<div class="row"><label><input type="checkbox" id="opt-winnable"> Winnable deals only</label></div>';
+      wrap.querySelector('input[value="' + state.drawCount + '"]').checked = true;
+      wrap.querySelector('#opt-timed').checked = state.timed;
+      wrap.querySelector('#opt-winnable').checked = winnableOnly;
+      dialog('Options', wrap, () => {
+        const draw = +wrap.querySelector('input[name="draw"]:checked').value;
+        const timed = wrap.querySelector('#opt-timed').checked;
+        winnableOnly = wrap.querySelector('#opt-winnable').checked;
+        newGame({ drawCount: draw, timed });
+        savePrefs();
+      });
+    }
+
+    function openAbout() {
+      const p = document.createElement('div');
+      p.innerHTML = 'Solitaire — a Windows XP tribute.<br>Klondike, Draw 1 or 3.<br>Built with vanilla HTML/CSS/JS.';
+      dialog('About Solitaire', p, null);
+    }
+
+    function savePrefs() {
+      try {
+        localStorage.setItem('xp-solitaire', JSON.stringify({
+          cardBack, drawCount: state.drawCount, timed: state.timed, winnableOnly,
+        }));
+      } catch (_) {}
+    }
+    function loadPrefs() {
+      try {
+        const p = JSON.parse(localStorage.getItem('xp-solitaire') || '{}');
+        if (p.cardBack && CARD_BACKS[p.cardBack]) cardBack = p.cardBack;
+        if (typeof p.winnableOnly === 'boolean') winnableOnly = p.winnableOnly;
+        return p;
+      } catch (_) { return {}; }
+    }
+
+    let elapsed = 0, timerId = null;
+
+    function startTimer() {
+      stopTimer();
+      elapsed = 0;
+      document.getElementById('status-time').textContent = 'Time: 0';
+      timerId = setInterval(() => {
+        elapsed++;
+        document.getElementById('status-time').textContent = 'Time: ' + elapsed;
+      }, 1000);
+    }
+    function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+    let winRaf = null, winLauncher = null;
+    function startWinAnimation() {
+      const sources = [];
+      state.foundations.forEach((f, i) => {
+        const x = GAP + (3 + i) * COL_W;
+        f.slice().reverse().forEach(card => sources.push({ card, x, y: TOP }));
+      });
+      let queue = sources.slice();
+      const sprites = [];
+      const feltRect = felt.getBoundingClientRect();
+      const W = feltRect.width, H = feltRect.height;
+
+      function launch() {
+        if (!queue.length) return;
+        const s = queue.shift();
+        const el = cardEl(s.card);
+        el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
+        applyOneBack(el);
+        felt.appendChild(el);
+        sprites.push({
+          el, x: s.x, y: s.y,
+          vx: (Math.random() * 6 - 3) || 2,
+          vy: -(Math.random() * 6 + 4),
+        });
+      }
+      winLauncher = setInterval(() => {
+        launch();
+        if (!queue.length) { clearInterval(winLauncher); winLauncher = null; }
+      }, 140);
+
+      function step() {
+        sprites.forEach(s => {
+          s.vy += 0.5;
+          s.x += s.vx; s.y += s.vy;
+          if (s.y > H - 100) {
+            s.y = H - 100; s.vy *= -0.75;
+            if (Math.abs(s.vy) < 2) s.vy = -(Math.random() * 6 + 6);
+          }
+          if (s.x < 0) { s.x = 0; s.vx = Math.abs(s.vx); }
+          else if (s.x > W - 72) { s.x = W - 72; s.vx = -Math.abs(s.vx); }
+          s.el.style.left = s.x + 'px';
+          s.el.style.top = s.y + 'px';
+        });
+        winRaf = requestAnimationFrame(step);
+      }
+      step();
+    }
+
+    function applyOneBack(el) {
+      if (el.classList.contains('back')) el.style.background = CARD_BACKS[cardBack];
+    }
+
+    function stopWinAnimation() {
+      if (winRaf) { cancelAnimationFrame(winRaf); winRaf = null; }
+      if (winLauncher) { clearInterval(winLauncher); winLauncher = null; }
+    }
+
+    felt.addEventListener('pointerdown', () => { if (winRaf) { stopWinAnimation(); } }, true);
+    const prefs = loadPrefs();
+    newGame({ drawCount: prefs.drawCount || 3, timed: !!prefs.timed });
+    scheduleRefill();
+  </script>
+</body>
+</html>
