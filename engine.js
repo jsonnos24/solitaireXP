@@ -197,6 +197,41 @@
     return false;
   }
 
+  // Smart auto-move for double/right-click: send the clicked card (and any valid
+  // run below it) to the best legal spot — foundation first, then a tableau build
+  // onto a non-empty column. Empty columns are skipped to avoid surprising moves.
+  // Returns true if a move happened.
+  function autoPlace(state, src) {
+    if (src.pile === 'tableau' && src.cardIndex === undefined) {
+      const col = state.tableau[src.index];
+      src = { ...src, cardIndex: col.length - 1 };
+    }
+
+    const moving = peekSource(state, src);
+    if (moving.length === 0) return false;
+    if (src.pile === 'tableau' && !isValidSequence(moving)) return false;
+
+    // 1) Foundation — only a single card can go to a foundation.
+    if (moving.length === 1) {
+      for (let i = 0; i < 4; i++) {
+        if (canStackFoundation(moving[0], state.foundations[i])) {
+          return moveCards(state, src, { pile: 'foundation', index: i }) !== null;
+        }
+      }
+    }
+
+    // 2) Tableau build onto a non-empty column whose top card accepts the run.
+    for (let i = 0; i < 7; i++) {
+      if (src.pile === 'tableau' && i === src.index) continue; // don't move onto itself
+      const col = state.tableau[i];
+      if (col.length === 0) continue;
+      if (canStackTableau(moving[0], col[col.length - 1])) {
+        return moveCards(state, src, { pile: 'tableau', index: i }) !== null;
+      }
+    }
+    return false;
+  }
+
   function isWon(state) {
     return state.foundations.every(f => f.length === 13);
   }
@@ -242,7 +277,7 @@
     return Math.floor(700000 / seconds);
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

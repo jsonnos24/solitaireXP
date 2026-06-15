@@ -255,3 +255,54 @@ test('timeBonus: 0 for short/zero games, larger for faster wins', () => {
   assert.ok(fast > slow);
   assert.ok(Number.isInteger(fast));
 });
+
+test('autoPlace: moves a card to a tableau build when no foundation move exists', () => {
+  // red 8 on waste, black 9 available on a tableau column → should build onto the 9
+  const s = tableauState([[C(9, 'S')], [], [], [], [], [], []]);
+  s.waste = [C(8, 'H')];
+  const moved = Solitaire.autoPlace(s, { pile: 'waste' });
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 0);
+  assert.deepEqual(s.tableau[0].map(c => c.rank + c.suit), ['9S', '8H']);
+});
+
+test('autoPlace: prefers the foundation over a tableau build', () => {
+  // Ace of hearts can go to foundation; also a black 2 sits in tableau but Ace cannot build there anyway
+  const s = tableauState([[C(2, 'S')], [], [], [], [], [], []]);
+  s.waste = [C(1, 'H')];
+  const moved = Solitaire.autoPlace(s, { pile: 'waste' });
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 0);
+  assert.ok(s.foundations.some(f => f.length === 1 && f[0].rank === 1 && f[0].suit === 'H'));
+});
+
+test('autoPlace: moves a valid tableau run onto another column', () => {
+  // column 0: 9C(down) then run 8H,7S ; column 1: 9S → run should move onto 9S? No: 8H on 9S works
+  const s = tableauState([
+    [C(9, 'C', false), C(8, 'H'), C(7, 'S')],
+    [C(9, 'S')],
+    [], [], [], [], [],
+  ]);
+  const moved = Solitaire.autoPlace(s, { pile: 'tableau', index: 0, cardIndex: 1 });
+  assert.equal(moved, true);
+  assert.deepEqual(s.tableau[1].map(c => c.rank + c.suit), ['9S', '8H', '7S']);
+  assert.equal(s.tableau[0].length, 1);
+  assert.equal(s.tableau[0][0].faceUp, true); // 9C flipped
+});
+
+test('autoPlace: returns false when nothing legal is available', () => {
+  const s = tableauState([[C(8, 'H')], [], [], [], [], [], []]);
+  // no black 9 anywhere, no foundation move
+  const moved = Solitaire.autoPlace(s, { pile: 'tableau', index: 0 });
+  assert.equal(moved, false);
+  assert.equal(s.tableau[0].length, 1);
+});
+
+test('autoPlace: does not move a card onto an empty column', () => {
+  // lone red 8 on waste, all tableau columns empty → no build target, should stay
+  const s = tableauState([[], [], [], [], [], [], []]);
+  s.waste = [C(8, 'H')];
+  const moved = Solitaire.autoPlace(s, { pile: 'waste' });
+  assert.equal(moved, false);
+  assert.equal(s.waste.length, 1);
+});
