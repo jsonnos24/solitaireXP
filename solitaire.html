@@ -200,6 +200,18 @@
       render();
     }
 
+    function pushHistory() { history.push(Solitaire.cloneState(state)); }
+
+    felt.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-pile]');
+      if (!el) return;
+      if (el.dataset.pile === 'stock') {
+        pushHistory();
+        Solitaire.drawStock(state);
+        render();
+      }
+    });
+
     newGame();
   </script>
 </body>
