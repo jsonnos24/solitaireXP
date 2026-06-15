@@ -227,6 +227,7 @@
     }
 
     function newGame(opts = {}) {
+      stopWinAnimation();
       const drawCount = opts.drawCount || (state ? state.drawCount : 3);
       const timed = opts.timed != null ? opts.timed : (state ? state.timed : false);
       state = Solitaire.deal(Solitaire.makeRng((Math.random() * 2 ** 32) >>> 0), drawCount);
@@ -517,7 +518,20 @@
       dialog('About Solitaire', p, null);
     }
 
-    function savePrefs() { /* implemented in Task 18 */ }
+    function savePrefs() {
+      try {
+        localStorage.setItem('xp-solitaire', JSON.stringify({
+          cardBack, drawCount: state.drawCount, timed: state.timed,
+        }));
+      } catch (_) {}
+    }
+    function loadPrefs() {
+      try {
+        const p = JSON.parse(localStorage.getItem('xp-solitaire') || '{}');
+        if (p.cardBack && CARD_BACKS[p.cardBack]) cardBack = p.cardBack;
+        return p;
+      } catch (_) { return {}; }
+    }
 
     let elapsed = 0, timerId = null;
 
@@ -532,9 +546,63 @@
     }
     function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
 
-    function startWinAnimation() { /* replaced in Task 18 */ }
+    let winRaf = null;
+    function startWinAnimation() {
+      const sources = [];
+      state.foundations.forEach((f, i) => {
+        const x = GAP + (3 + i) * COL_W;
+        f.slice().reverse().forEach(card => sources.push({ card, x, y: TOP }));
+      });
+      let queue = sources.slice();
+      const sprites = [];
+      const feltRect = felt.getBoundingClientRect();
+      const W = feltRect.width, H = feltRect.height;
 
-    newGame();
+      function launch() {
+        if (!queue.length) return;
+        const s = queue.shift();
+        const el = cardEl(s.card);
+        el.style.left = s.x + 'px'; el.style.top = s.y + 'px';
+        applyOneBack(el);
+        felt.appendChild(el);
+        sprites.push({
+          el, x: s.x, y: s.y,
+          vx: (Math.random() * 6 - 3) || 2,
+          vy: -(Math.random() * 6 + 4),
+        });
+      }
+      const launcher = setInterval(() => {
+        launch();
+        if (!queue.length) clearInterval(launcher);
+      }, 140);
+
+      function step() {
+        sprites.forEach(s => {
+          s.vy += 0.5;
+          s.x += s.vx; s.y += s.vy;
+          if (s.y > H - 100) {
+            s.y = H - 100; s.vy *= -0.75;
+            if (Math.abs(s.vy) < 2) s.vy = -(Math.random() * 6 + 6);
+          }
+          s.el.style.left = s.x + 'px';
+          s.el.style.top = s.y + 'px';
+        });
+        winRaf = requestAnimationFrame(step);
+      }
+      step();
+    }
+
+    function applyOneBack(el) {
+      if (el.classList.contains('back')) el.style.background = CARD_BACKS[cardBack];
+    }
+
+    function stopWinAnimation() {
+      if (winRaf) { cancelAnimationFrame(winRaf); winRaf = null; }
+    }
+
+    felt.addEventListener('pointerdown', () => { if (winRaf) { stopWinAnimation(); } }, true);
+    const prefs = loadPrefs();
+    newGame({ drawCount: prefs.drawCount || 3, timed: !!prefs.timed });
   </script>
 </body>
 </html>
