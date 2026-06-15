@@ -1117,6 +1117,11 @@
         pushHistory(); Solitaire.drawStock(state); render();
       }
       else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); hint(); }
+      else if ((e.key === 'n' || e.key === 'N') && !e.ctrlKey && !e.metaKey) {
+        if (drag || document.querySelector('.overlay') || document.getElementById('searching')) return;
+        e.preventDefault();
+        confirmNewGame();
+      }
     });
 
     const CARD_BACKS = {
@@ -1235,6 +1240,12 @@
       dialog('About Solitaire', p, null);
     }
 
+    function confirmNewGame() {
+      const p = document.createElement('div');
+      p.textContent = 'Deal a new game?';
+      dialog('New Game', p, () => newGame());
+    }
+
     function savePrefs() {
       try {
         localStorage.setItem('xp-solitaire', JSON.stringify({
@@ -1251,18 +1262,44 @@
       } catch (_) { return {}; }
     }
 
-    let elapsed = 0, timerId = null;
+    let elapsed = 0, timerId = null, paused = false, timerActive = false;
 
+    function renderTime() {
+      document.getElementById('status-time').textContent =
+        'Time: ' + elapsed + (paused ? ' (paused)' : '');
+    }
+    function runTick() {
+      if (timerId) return;
+      timerId = setInterval(() => { elapsed++; renderTime(); }, 1000);
+    }
     function startTimer() {
       stopTimer();
-      elapsed = 0;
-      document.getElementById('status-time').textContent = 'Time: 0';
-      timerId = setInterval(() => {
-        elapsed++;
-        document.getElementById('status-time').textContent = 'Time: ' + elapsed;
-      }, 1000);
+      elapsed = 0; paused = false; timerActive = true;
+      renderTime();
+      runTick();
     }
-    function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+    function stopTimer() {
+      if (timerId) { clearInterval(timerId); timerId = null; }
+      timerActive = false; paused = false;
+    }
+    function pauseTimer() {
+      if (!timerActive || paused) return;
+      paused = true;
+      if (timerId) { clearInterval(timerId); timerId = null; }
+      renderTime();
+    }
+    function resumeTimer() {
+      if (!timerActive || !paused) return;
+      paused = false;
+      renderTime();
+      runTick();
+    }
+
+    // Pause the clock when the player clicks off the game window; resume on return.
+    document.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('#window')) resumeTimer();
+      else pauseTimer();
+    }, true);
 
     let winRaf = null, winLauncher = null;
     function startWinAnimation() {
