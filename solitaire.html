@@ -75,6 +75,8 @@
     border: 2px solid #fff;
   }
   .card.dragging { opacity: .6; }
+  #drag-layer { position: absolute; inset: 0; pointer-events: none; z-index: 50; }
+  #drag-layer .card { box-shadow: 0 6px 14px rgba(0,0,0,.4); }
 </style>
 </head>
 <body>
@@ -106,6 +108,8 @@
     const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
 
     const felt = document.getElementById('felt');
+    const dragLayer = document.createElement('div');
+    dragLayer.id = 'drag-layer';
     let state = null;
     let history = [];
 
@@ -182,6 +186,7 @@
         });
       });
       updateStatus();
+      felt.appendChild(dragLayer);
     }
 
     function updateStatus() {
@@ -211,6 +216,105 @@
         render();
       }
     });
+
+    let drag = null; // { cards, src, els, dx, dy }
+
+    function sourceFromEl(el) {
+      const p = el.dataset.pile;
+      if (p === 'waste') return { pile: 'waste' };
+      if (p === 'foundation') return { pile: 'foundation', index: +el.dataset.index };
+      if (p === 'tableau') return { pile: 'tableau', index: +el.dataset.index, cardIndex: +el.dataset.cardIndex };
+      return null;
+    }
+
+    function movingCards(src) {
+      if (src.pile === 'waste') {
+        const c = state.waste[state.waste.length - 1];
+        return c ? [c] : [];
+      }
+      if (src.pile === 'foundation') {
+        const f = state.foundations[src.index];
+        const c = f[f.length - 1];
+        return c ? [c] : [];
+      }
+      if (src.pile === 'tableau') {
+        return state.tableau[src.index].slice(src.cardIndex);
+      }
+      return [];
+    }
+
+    felt.addEventListener('pointerdown', (e) => {
+      const el = e.target.closest('.card');
+      if (!el || el.classList.contains('back')) return;
+      if (el.dataset.pile === 'stock') return;
+      const src = sourceFromEl(el);
+      if (!src) return;
+      const cards = movingCards(src);
+      if (cards.length === 0) return;
+      if (src.pile === 'tableau' && !Solitaire.isValidSequence(cards)) return;
+
+      const feltRect = felt.getBoundingClientRect();
+      const startX = e.clientX - feltRect.left;
+      const startY = e.clientY - feltRect.top;
+      const baseTop = parseFloat(el.style.top);
+      const baseLeft = parseFloat(el.style.left);
+
+      drag = { cards, src, els: [], dx: startX - baseLeft, dy: startY - baseTop };
+      cards.forEach((card, i) => {
+        const ce = cardEl(card);
+        ce.style.left = baseLeft + 'px';
+        ce.style.top = (baseTop + i * ROW) + 'px';
+        dragLayer.appendChild(ce);
+        drag.els.push({ ce, offset: i * ROW });
+      });
+      felt.querySelectorAll('.card').forEach(c => {
+        if (c.dataset.pile === src.pile &&
+            (src.pile !== 'tableau' || +c.dataset.index === src.index) &&
+            (src.pile !== 'tableau' || +c.dataset.cardIndex >= src.cardIndex)) {
+          if (!dragLayer.contains(c)) c.style.visibility = 'hidden';
+        }
+      });
+      felt.setPointerCapture(e.pointerId);
+    });
+
+    felt.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const r = felt.getBoundingClientRect();
+      const x = e.clientX - r.left - drag.dx;
+      const y = e.clientY - r.top - drag.dy;
+      drag.els.forEach(({ ce, offset }) => { ce.style.left = x + 'px'; ce.style.top = (y + offset) + 'px'; });
+    });
+
+    function pileAtPoint(x, y) {
+      const els = document.elementsFromPoint(x, y);
+      for (const el of els) {
+        const t = el.closest('[data-pile]');
+        if (t && t.dataset.pile !== 'stock' && !dragLayer.contains(t)) {
+          if (t.dataset.pile === 'foundation') return { pile: 'foundation', index: +t.dataset.index };
+          if (t.dataset.pile === 'tableau') return { pile: 'tableau', index: +t.dataset.index };
+        }
+      }
+      return null;
+    }
+
+    felt.addEventListener('pointerup', (e) => {
+      if (!drag) return;
+      const target = pileAtPoint(e.clientX, e.clientY);
+      let moved = false;
+      if (target) {
+        pushHistory();
+        const result = Solitaire.moveCards(state, drag.src, target);
+        if (result) moved = true; else history.pop();
+      }
+      drag.els.forEach(({ ce }) => ce.remove());
+      drag = null;
+      render();
+      if (moved) afterMove();
+    });
+
+    function afterMove() {
+      // hooks added in later tasks (win check, auto-complete, persistence)
+    }
 
     newGame();
   </script>
