@@ -1099,6 +1099,7 @@
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F2') { e.preventDefault(); newGame(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); newGame(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
       else if (e.key === ' ' || e.key === 'Enter') {
         if (drag || document.querySelector('.overlay')) return;
@@ -1159,7 +1160,7 @@
     document.getElementById('menu-game').addEventListener('click', (e) => {
       e.stopPropagation();
       openDropdown(e.currentTarget, [
-        { label: 'New Game  (F2)', action: () => newGame() },
+        { label: 'New Game  (Ctrl+N / F2)', action: () => newGame() },
         { label: 'Undo  (Ctrl+Z)', action: () => undo() },
         '-',
         { label: 'Hint  (H)', action: hint },
