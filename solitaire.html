@@ -325,6 +325,27 @@
       // hooks added in later tasks (win check, auto-complete, persistence)
     }
 
+    function tryAutoFoundation(el) {
+      const src = sourceFromEl(el);
+      if (!src) return;
+      pushHistory();
+      if (Solitaire.autoToFoundation(state, src)) { render(); afterMove(); }
+      else history.pop();
+    }
+
+    felt.addEventListener('dblclick', (e) => {
+      const el = e.target.closest('.card');
+      if (!el || el.classList.contains('back') || el.dataset.pile === 'stock') return;
+      tryAutoFoundation(el);
+    });
+
+    felt.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const el = e.target.closest('.card');
+      if (!el || el.classList.contains('back') || el.dataset.pile === 'stock') return;
+      tryAutoFoundation(el);
+    });
+
     newGame();
   </script>
 </body>
