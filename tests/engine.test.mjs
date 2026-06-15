@@ -78,3 +78,49 @@ test('isValidSequence: descending alternating face-up run', () => {
   assert.equal(Solitaire.isValidSequence([C(7, 'S', false), C(6, 'H')]), false);
   assert.equal(Solitaire.isValidSequence([C(9, 'D')]), true);
 });
+
+function tableauState(columns) {
+  return {
+    stock: [], waste: [], foundations: [[], [], [], []],
+    tableau: columns, drawCount: 3, scoringMode: 'standard',
+    timed: false, score: 0, recycles: 0,
+  };
+}
+
+test('moveCards: tableau→tableau moves a valid run and flips the exposed card', () => {
+  const s = tableauState([
+    [C(9, 'C', false), C(7, 'H')],
+    [C(8, 'S')],
+    [], [], [], [], [],
+  ]);
+  const out = Solitaire.moveCards(s, { pile: 'tableau', index: 0, cardIndex: 1 },
+                                     { pile: 'tableau', index: 1 });
+  assert.deepEqual(out.tableau[1].map(c => c.rank + c.suit), ['8S', '7H']);
+  assert.equal(out.tableau[0].length, 1);
+  assert.equal(out.tableau[0][0].faceUp, true);
+  assert.equal(out.score, 5);
+});
+
+test('moveCards: waste→foundation scores +10', () => {
+  const s = tableauState([[], [], [], [], [], [], []]);
+  s.waste = [C(1, 'H')];
+  const out = Solitaire.moveCards(s, { pile: 'waste' }, { pile: 'foundation', index: 0 });
+  assert.deepEqual(out.foundations[0].map(c => c.rank + c.suit), ['1H']);
+  assert.equal(out.waste.length, 0);
+  assert.equal(out.score, 10);
+});
+
+test('moveCards: foundation→tableau subtracts 15 but never below 0', () => {
+  const s = tableauState([[C(3, 'S')], [], [], [], [], [], []]);
+  s.foundations[0] = [C(1, 'H'), C(2, 'H')];
+  const out = Solitaire.moveCards(s, { pile: 'foundation', index: 0 },
+                                     { pile: 'tableau', index: 0 });
+  assert.equal(out.score, 0);
+});
+
+test('moveCards: rejects an illegal move and leaves state unchanged', () => {
+  const s = tableauState([[C(7, 'H')], [C(7, 'S')], [], [], [], [], []]);
+  const out = Solitaire.moveCards(s, { pile: 'tableau', index: 0, cardIndex: 0 },
+                                     { pile: 'tableau', index: 1 });
+  assert.equal(out, null);
+});
