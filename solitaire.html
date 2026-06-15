@@ -442,10 +442,15 @@
         felt.appendChild(r);
       }
       if (state.waste.length) {
-        const c = state.waste[state.waste.length - 1];
-        const el = cardEl(c); place(el, GAP + COL_W, TOP);
-        el.dataset.pile = 'waste';
-        felt.appendChild(el);
+        const fan = state.drawCount === 3 ? 3 : 1;
+        const shown = state.waste.slice(Math.max(0, state.waste.length - fan));
+        const FAN_X = 18;
+        shown.forEach((c, k) => {
+          const el = cardEl(c);
+          place(el, GAP + COL_W + k * FAN_X, TOP);
+          if (k === shown.length - 1) el.dataset.pile = 'waste';
+          felt.appendChild(el);
+        });
       }
       state.foundations.forEach((f, i) => {
         if (f.length) {
@@ -601,17 +606,18 @@
       if (moved) afterMove();
     });
 
+    let autoCompleteTimer = null;
     function afterMove() {
       if (Solitaire.canAutoComplete(state)) { runAutoComplete(); return; }
       if (Solitaire.isWon(state)) winGame();
     }
 
     function runAutoComplete() {
-      const tick = setInterval(() => {
+      autoCompleteTimer = setInterval(() => {
         const moved = Solitaire.autoCompleteStep(state);
         render();
         if (!moved) {
-          clearInterval(tick);
+          clearInterval(autoCompleteTimer); autoCompleteTimer = null;
           if (Solitaire.isWon(state)) winGame();
         }
       }, 120);
@@ -648,6 +654,7 @@
     });
 
     function undo() {
+      if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
       if (!history.length) return;
       state = history.pop();
       render();
@@ -657,6 +664,7 @@
       if (e.key === 'F2') { e.preventDefault(); newGame(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
       else if (e.key === ' ' || e.key === 'Enter') {
+        if (drag || document.querySelector('.overlay')) return;
         e.preventDefault();
         pushHistory(); Solitaire.drawStock(state); render();
       }
@@ -713,8 +721,8 @@
     document.getElementById('menu-game').addEventListener('click', (e) => {
       e.stopPropagation();
       openDropdown(e.currentTarget, [
-        { label: 'New Game', action: () => newGame() },
-        { label: 'Undo', action: () => undo() },
+        { label: 'New Game  (F2)', action: () => newGame() },
+        { label: 'Undo  (Ctrl+Z)', action: () => undo() },
         '-',
         { label: 'Deck…', action: openDeckPicker },
         { label: 'Options…', action: openOptions },
@@ -838,6 +846,8 @@
             s.y = H - 100; s.vy *= -0.75;
             if (Math.abs(s.vy) < 2) s.vy = -(Math.random() * 6 + 6);
           }
+          if (s.x < 0) { s.x = 0; s.vx = Math.abs(s.vx); }
+          else if (s.x > W - 72) { s.x = W - 72; s.vx = -Math.abs(s.vx); }
           s.el.style.left = s.x + 'px';
           s.el.style.top = s.y + 'px';
         });
