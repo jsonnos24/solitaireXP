@@ -61,7 +61,27 @@
     };
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal };
+  function canStackTableau(moving, ontoTop) {
+    if (!ontoTop) return moving.rank === 13;
+    return ontoTop.rank === moving.rank + 1 &&
+           isRed(ontoTop.suit) !== isRed(moving.suit);
+  }
+
+  function canStackFoundation(moving, foundationPile) {
+    const top = foundationPile[foundationPile.length - 1];
+    if (!top) return moving.rank === 1;
+    return top.suit === moving.suit && moving.rank === top.rank + 1;
+  }
+
+  function isValidSequence(cards) {
+    for (let i = 0; i < cards.length; i++) {
+      if (!cards[i].faceUp) return false;
+      if (i > 0 && !canStackTableau(cards[i], cards[i - 1])) return false;
+    }
+    return true;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

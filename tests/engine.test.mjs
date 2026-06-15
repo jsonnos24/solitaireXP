@@ -50,3 +50,31 @@ test('deal builds 7 tableau columns and a 24-card stock', () => {
   assert.equal(state.score, 0);
   assert.equal(state.recycles, 0);
 });
+
+const C = (rank, suit, faceUp = true) => ({ rank, suit, faceUp });
+
+test('canStackTableau: descending, alternating color', () => {
+  assert.equal(Solitaire.canStackTableau(C(6, 'H'), C(7, 'S')), true);
+  assert.equal(Solitaire.canStackTableau(C(6, 'D'), C(7, 'H')), false);
+  assert.equal(Solitaire.canStackTableau(C(5, 'S'), C(7, 'H')), false);
+});
+
+test('canStackTableau: only a King goes on an empty column', () => {
+  assert.equal(Solitaire.canStackTableau(C(13, 'S'), null), true);
+  assert.equal(Solitaire.canStackTableau(C(12, 'S'), null), false);
+});
+
+test('canStackFoundation: Ace starts, then same suit ascending', () => {
+  assert.equal(Solitaire.canStackFoundation(C(1, 'H'), []), true);
+  assert.equal(Solitaire.canStackFoundation(C(2, 'H'), []), false);
+  assert.equal(Solitaire.canStackFoundation(C(2, 'H'), [C(1, 'H')]), true);
+  assert.equal(Solitaire.canStackFoundation(C(2, 'S'), [C(1, 'H')]), false);
+  assert.equal(Solitaire.canStackFoundation(C(3, 'H'), [C(1, 'H')]), false);
+});
+
+test('isValidSequence: descending alternating face-up run', () => {
+  assert.equal(Solitaire.isValidSequence([C(7, 'S'), C(6, 'H'), C(5, 'S')]), true);
+  assert.equal(Solitaire.isValidSequence([C(7, 'S'), C(6, 'S')]), false);
+  assert.equal(Solitaire.isValidSequence([C(7, 'S', false), C(6, 'H')]), false);
+  assert.equal(Solitaire.isValidSequence([C(9, 'D')]), true);
+});
