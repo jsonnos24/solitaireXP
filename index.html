@@ -70,6 +70,11 @@
     font-size: 34px;
   }
   .card.face .pip { font-weight: bold; font-size: 30px; }
+  .card .spip {
+    position: absolute; transform: translate(-50%, -50%);
+    font-size: 16px; line-height: 1;
+  }
+  .card .spip.flip { transform: translate(-50%, -50%) rotate(180deg); }
   .card.red { color: #c00; }
   .card.black { color: #111; }
   .card.back {
@@ -657,6 +662,21 @@
     const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
     const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
 
+    // Classic pip arrangements for ranks 2–10 as [xFraction, yFraction] within the
+    // card. Left/centre/right columns; pips in the lower half are drawn inverted.
+    const PL = 0.28, PC = 0.5, PR = 0.72;
+    const PIP_LAYOUT = {
+      2:  [[PC,0.18],[PC,0.82]],
+      3:  [[PC,0.18],[PC,0.5],[PC,0.82]],
+      4:  [[PL,0.18],[PR,0.18],[PL,0.82],[PR,0.82]],
+      5:  [[PL,0.18],[PR,0.18],[PC,0.5],[PL,0.82],[PR,0.82]],
+      6:  [[PL,0.18],[PR,0.18],[PL,0.5],[PR,0.5],[PL,0.82],[PR,0.82]],
+      7:  [[PL,0.18],[PR,0.18],[PC,0.34],[PL,0.5],[PR,0.5],[PL,0.82],[PR,0.82]],
+      8:  [[PL,0.18],[PR,0.18],[PC,0.34],[PL,0.5],[PR,0.5],[PC,0.66],[PL,0.82],[PR,0.82]],
+      9:  [[PL,0.16],[PR,0.16],[PL,0.38],[PR,0.38],[PC,0.5],[PL,0.62],[PR,0.62],[PL,0.84],[PR,0.84]],
+      10: [[PL,0.16],[PR,0.16],[PC,0.30],[PL,0.38],[PR,0.38],[PL,0.62],[PR,0.62],[PC,0.70],[PL,0.84],[PR,0.84]],
+    };
+
     const felt = document.getElementById('felt');
     const dragLayer = document.createElement('div');
     dragLayer.id = 'drag-layer';
@@ -679,10 +699,25 @@
       br.className = 'corner br';
       br.style.whiteSpace = 'pre';
       br.textContent = label;
-      const pip = document.createElement('div');
-      pip.className = 'pip';
-      pip.textContent = card.rank > 10 ? rankLabel(card.rank) : SUIT_GLYPH[card.suit];
-      el.append(tl, br, pip);
+      el.append(tl, br);
+
+      const glyph = SUIT_GLYPH[card.suit];
+      if (card.rank > 10 || card.rank === 1) {
+        // Face cards show the big letter; Ace shows one large central pip.
+        const pip = document.createElement('div');
+        pip.className = 'pip';
+        pip.textContent = card.rank > 10 ? rankLabel(card.rank) : glyph;
+        el.appendChild(pip);
+      } else {
+        for (const [x, y] of PIP_LAYOUT[card.rank]) {
+          const s = document.createElement('div');
+          s.className = 'spip' + (y > 0.5 ? ' flip' : '');
+          s.style.left = (x * 100) + '%';
+          s.style.top = (y * 100) + '%';
+          s.textContent = glyph;
+          el.appendChild(s);
+        }
+      }
       return el;
     }
 
