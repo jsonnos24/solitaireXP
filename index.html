@@ -69,10 +69,10 @@
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     font-size: 34px;
   }
-  .card.face .pip { font-weight: bold; font-size: 30px; }
+  .card.face .pip { font-size: 44px; line-height: 1; }
   .card .spip {
     position: absolute; transform: translate(-50%, -50%);
-    font-size: 16px; line-height: 1;
+    font-size: 13px; line-height: 1;
   }
   .card .spip.flip { transform: translate(-50%, -50%) rotate(180deg); }
   .card.red { color: #c00; }
@@ -663,19 +663,23 @@
     const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
 
     // Classic pip arrangements for ranks 2–10 as [xFraction, yFraction] within the
-    // card. Left/centre/right columns; pips in the lower half are drawn inverted.
-    const PL = 0.28, PC = 0.5, PR = 0.72;
+    // card. Left/centre/right columns are kept inboard of the corner indices;
+    // pips in the lower half are drawn inverted.
+    const PL = 0.34, PC = 0.5, PR = 0.66;
     const PIP_LAYOUT = {
-      2:  [[PC,0.18],[PC,0.82]],
-      3:  [[PC,0.18],[PC,0.5],[PC,0.82]],
-      4:  [[PL,0.18],[PR,0.18],[PL,0.82],[PR,0.82]],
-      5:  [[PL,0.18],[PR,0.18],[PC,0.5],[PL,0.82],[PR,0.82]],
-      6:  [[PL,0.18],[PR,0.18],[PL,0.5],[PR,0.5],[PL,0.82],[PR,0.82]],
-      7:  [[PL,0.18],[PR,0.18],[PC,0.34],[PL,0.5],[PR,0.5],[PL,0.82],[PR,0.82]],
-      8:  [[PL,0.18],[PR,0.18],[PC,0.34],[PL,0.5],[PR,0.5],[PC,0.66],[PL,0.82],[PR,0.82]],
-      9:  [[PL,0.16],[PR,0.16],[PL,0.38],[PR,0.38],[PC,0.5],[PL,0.62],[PR,0.62],[PL,0.84],[PR,0.84]],
-      10: [[PL,0.16],[PR,0.16],[PC,0.30],[PL,0.38],[PR,0.38],[PL,0.62],[PR,0.62],[PC,0.70],[PL,0.84],[PR,0.84]],
+      2:  [[PC,0.20],[PC,0.80]],
+      3:  [[PC,0.20],[PC,0.5],[PC,0.80]],
+      4:  [[PL,0.20],[PR,0.20],[PL,0.80],[PR,0.80]],
+      5:  [[PL,0.20],[PR,0.20],[PC,0.5],[PL,0.80],[PR,0.80]],
+      6:  [[PL,0.20],[PR,0.20],[PL,0.5],[PR,0.5],[PL,0.80],[PR,0.80]],
+      7:  [[PL,0.20],[PR,0.20],[PC,0.35],[PL,0.5],[PR,0.5],[PL,0.80],[PR,0.80]],
+      8:  [[PL,0.20],[PR,0.20],[PC,0.35],[PL,0.5],[PR,0.5],[PC,0.65],[PL,0.80],[PR,0.80]],
+      9:  [[PL,0.18],[PR,0.18],[PL,0.40],[PR,0.40],[PC,0.5],[PL,0.60],[PR,0.60],[PL,0.82],[PR,0.82]],
+      10: [[PL,0.18],[PR,0.18],[PC,0.30],[PL,0.40],[PR,0.40],[PL,0.60],[PR,0.60],[PC,0.70],[PL,0.82],[PR,0.82]],
     };
+    // Court figures: monochrome glyphs that take the suit colour (king, queen,
+    // knight for the Jack) — recognisable courts without proprietary artwork.
+    const COURT = { 11: '♞', 12: '♛', 13: '♚' };
 
     const felt = document.getElementById('felt');
     const dragLayer = document.createElement('div');
@@ -703,10 +707,10 @@
 
       const glyph = SUIT_GLYPH[card.suit];
       if (card.rank > 10 || card.rank === 1) {
-        // Face cards show the big letter; Ace shows one large central pip.
+        // Court cards show a figure glyph; Ace shows one large central pip.
         const pip = document.createElement('div');
         pip.className = 'pip';
-        pip.textContent = card.rank > 10 ? rankLabel(card.rank) : glyph;
+        pip.textContent = card.rank > 10 ? COURT[card.rank] : glyph;
         el.appendChild(pip);
       } else {
         for (const [x, y] of PIP_LAYOUT[card.rank]) {
