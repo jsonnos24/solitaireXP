@@ -423,3 +423,31 @@ test('deck stays complete (52 unique cards) through thousands of random operatio
     }
   }
 });
+
+function proveWinnable(drawCount, maxSeeds) {
+  for (let seed = 1; seed <= maxSeeds; seed++) {
+    const trial = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
+    if (!Solitaire.isWinnable(trial, 200000)) continue;
+    const path = Solitaire.solve(Solitaire.deal(Solitaire.makeRng(seed), drawCount), 800000);
+    if (!path) continue; // solve budget may differ; try next winnable seed
+    const s = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
+    for (const d of path) {
+      const r = Solitaire.applyMove(s, d);
+      assert.ok(r !== null, 'illegal solver move ' + JSON.stringify(d) + ' (draw ' + drawCount + ', seed ' + seed + ')');
+      assertCompleteDeck(s, 'replay draw ' + drawCount + ' seed ' + seed);
+    }
+    assert.equal(Solitaire.isWon(s), true, 'replayed solution must win (draw ' + drawCount + ', seed ' + seed + ')');
+    return seed; // proved one end-to-end
+  }
+  return -1;
+}
+
+test('solve produces a replayable winning line that actually completes (Draw One)', () => {
+  const seed = proveWinnable(1, 40);
+  assert.ok(seed > 0, 'expected to prove at least one Draw-One deal end-to-end');
+});
+
+test('solve produces a replayable winning line that actually completes (Draw Three)', () => {
+  const seed = proveWinnable(3, 40);
+  assert.ok(seed > 0, 'expected to prove at least one Draw-Three deal end-to-end');
+});

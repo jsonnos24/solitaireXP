@@ -319,24 +319,27 @@
   }
 
   // Deterministically play all currently-safe cards to the foundations.
-  function forcedAutoplay(state) {
+  // Play all currently-safe cards to the foundations, recording each as a
+  // replayable descriptor in `log` (used by solve() to return a full move list).
+  function forcedAutoplayLog(state, log) {
     let changed = true;
     while (changed) {
       changed = false;
       if (state.waste.length) {
         const c = state.waste[state.waste.length - 1];
-        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { changed = true; continue; }
+        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { log.push({ t: 'wf' }); changed = true; continue; }
       }
       for (let i = 0; i < 7; i++) {
         const col = state.tableau[i];
         if (!col.length) continue;
         const c = col[col.length - 1];
         if (c.faceUp && isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'tableau', index: i })) {
-          changed = true; break;
+          log.push({ t: 'tf', i }); changed = true; break;
         }
       }
     }
   }
+  function forcedAutoplay(state) { forcedAutoplayLog(state, []); }
 
   // Canonical key for the transposition table. Tableau columns are sorted so that
   // column permutations collapse to one state.
@@ -351,20 +354,23 @@
     return cols + '#' + f + '#' + stock + '#' + waste + '#' + state.drawCount;
   }
 
-  // Generate successor states, ordered best-first (lower priority = tried first).
-  function genMoves(state) {
+  // Generate successors as { c: childState, desc: replayableMove }, ordered
+  // best-first (lower priority = tried first). The child has the explicit move
+  // applied but NOT the subsequent safe autoplay (the caller does that).
+  // Descriptor forms: {t:'wf'} {t:'tf',i} {t:'wt',j} {t:'tt',i,ci,j} {t:'draw'}.
+  function genMovesDesc(state) {
     const out = [];
-    const add = (c, priority) => { if (c) out.push({ c, priority }); };
+    const add = (c, desc, priority) => { if (c) out.push({ c, desc, priority }); };
 
     // Non-safe foundation moves (safe ones are already auto-played): waste + tableau tops.
     if (state.waste.length) {
       const c = cloneState(state);
-      if (autoToFoundation(c, { pile: 'waste' })) add(c, 1);
+      if (autoToFoundation(c, { pile: 'waste' })) add(c, { t: 'wf' }, 1);
     }
     for (let i = 0; i < 7; i++) {
       if (!state.tableau[i].length) continue;
       const c = cloneState(state);
-      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, 1);
+      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, { t: 'tf', i }, 1);
     }
 
     // Waste top → tableau build.
@@ -375,7 +381,7 @@
         const dtop = dcol.length ? dcol[dcol.length - 1] : null;
         if (!canStackTableau(wc, dtop)) continue;
         const c = cloneState(state);
-        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, 2);
+        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, { t: 'wt', j }, 2);
       }
     }
 
@@ -395,7 +401,7 @@
           if (dcol.length === 0 && s === f && f === 0) continue; // relocating a whole column to empty = useless
           const c = cloneState(state);
           if (moveCards(c, { pile: 'tableau', index: i, cardIndex: s }, { pile: 'tableau', index: j }) !== null) {
-            add(c, flips ? 0 : 2);
+            add(c, { t: 'tt', i, ci: s, j }, flips ? 0 : 2);
           }
         }
       }
@@ -403,14 +409,16 @@
 
     // Draw / recycle (lowest priority).
     if (state.stock.length > 0) {
-      const c = cloneState(state); drawStock(c); add(c, 3);
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 3);
     } else if (state.waste.length > 0) {
-      const c = cloneState(state); drawStock(c); add(c, 4);
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 4);
     }
 
     out.sort((a, b) => a.priority - b.priority);
-    return out.map(o => o.c);
+    return out;
   }
+
+  function genMoves(state) { return genMovesDesc(state).map(o => o.c); }
 
   // Resumable iterative depth-first search with a transposition table and a node
   // budget. `step(slice)` advances up to `slice` node expansions and returns
@@ -456,7 +464,50 @@
     return r === 'win';
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver };
+  // Find a winning move sequence from `initial`, or null if none within budget.
+  // The result is an array of replayable descriptors (see genMovesDesc) that can
+  // be applied with applyMove() in order to reach a completed game. Used by the
+  // UI's Hint and Auto-solve. Operates on the CURRENT position, so it returns
+  // null when the player has already played into a dead end.
+  function solve(initial, maxNodes = 600000) {
+    let nodes = 0;
+    const visited = new Set();
+    const root = cloneState(initial);
+    const rootLog = [];
+    forcedAutoplayLog(root, rootLog);
+    if (isWon(root)) return rootLog;
+    visited.add(canonicalKey(root));
+    const stack = [{ gen: genMovesDesc(root), i: 0, path: rootLog }];
+    while (stack.length) {
+      if (++nodes > maxNodes) return null;
+      const top = stack[stack.length - 1];
+      if (top.i >= top.gen.length) { stack.pop(); continue; }
+      const mv = top.gen[top.i++];
+      const child = mv.c;                 // explicit move already applied
+      const log = [mv.desc];
+      forcedAutoplayLog(child, log);      // record the safe autoplays that follow
+      const path = top.path.concat(log);
+      if (isWon(child)) return path;
+      const key = canonicalKey(child);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      stack.push({ gen: genMovesDesc(child), i: 0, path });
+    }
+    return null;
+  }
+
+  // Apply a single solver descriptor to a live state using public operations.
+  // Returns the state (mutated) or null if the move was not legal.
+  function applyMove(state, d) {
+    if (d.t === 'draw') return drawStock(state);
+    if (d.t === 'wf') return autoToFoundation(state, { pile: 'waste' }) ? state : null;
+    if (d.t === 'tf') return autoToFoundation(state, { pile: 'tableau', index: d.i }) ? state : null;
+    if (d.t === 'wt') return moveCards(state, { pile: 'waste' }, { pile: 'tableau', index: d.j });
+    if (d.t === 'tt') return moveCards(state, { pile: 'tableau', index: d.i, cardIndex: d.ci }, { pile: 'tableau', index: d.j });
+    return null;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver, solve, applyMove };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

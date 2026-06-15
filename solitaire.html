@@ -100,6 +100,10 @@
   .deck-grid { display: grid; grid-template-columns: repeat(4, 48px); gap: 10px; }
   .deck-grid .opt { height: 68px; border-radius: 6px; border: 2px solid #fff; cursor: pointer; }
   .deck-grid .opt.selected { outline: 3px solid #ffd400; }
+  .card.hint, .pile.hint {
+    outline: 3px solid #ffd400; outline-offset: -1px;
+    box-shadow: 0 0 12px 3px rgba(255,212,0,.8); z-index: 40;
+  }
 </style>
 </head>
 <body>
@@ -447,24 +451,27 @@
   }
 
   // Deterministically play all currently-safe cards to the foundations.
-  function forcedAutoplay(state) {
+  // Play all currently-safe cards to the foundations, recording each as a
+  // replayable descriptor in `log` (used by solve() to return a full move list).
+  function forcedAutoplayLog(state, log) {
     let changed = true;
     while (changed) {
       changed = false;
       if (state.waste.length) {
         const c = state.waste[state.waste.length - 1];
-        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { changed = true; continue; }
+        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { log.push({ t: 'wf' }); changed = true; continue; }
       }
       for (let i = 0; i < 7; i++) {
         const col = state.tableau[i];
         if (!col.length) continue;
         const c = col[col.length - 1];
         if (c.faceUp && isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'tableau', index: i })) {
-          changed = true; break;
+          log.push({ t: 'tf', i }); changed = true; break;
         }
       }
     }
   }
+  function forcedAutoplay(state) { forcedAutoplayLog(state, []); }
 
   // Canonical key for the transposition table. Tableau columns are sorted so that
   // column permutations collapse to one state.
@@ -479,20 +486,23 @@
     return cols + '#' + f + '#' + stock + '#' + waste + '#' + state.drawCount;
   }
 
-  // Generate successor states, ordered best-first (lower priority = tried first).
-  function genMoves(state) {
+  // Generate successors as { c: childState, desc: replayableMove }, ordered
+  // best-first (lower priority = tried first). The child has the explicit move
+  // applied but NOT the subsequent safe autoplay (the caller does that).
+  // Descriptor forms: {t:'wf'} {t:'tf',i} {t:'wt',j} {t:'tt',i,ci,j} {t:'draw'}.
+  function genMovesDesc(state) {
     const out = [];
-    const add = (c, priority) => { if (c) out.push({ c, priority }); };
+    const add = (c, desc, priority) => { if (c) out.push({ c, desc, priority }); };
 
     // Non-safe foundation moves (safe ones are already auto-played): waste + tableau tops.
     if (state.waste.length) {
       const c = cloneState(state);
-      if (autoToFoundation(c, { pile: 'waste' })) add(c, 1);
+      if (autoToFoundation(c, { pile: 'waste' })) add(c, { t: 'wf' }, 1);
     }
     for (let i = 0; i < 7; i++) {
       if (!state.tableau[i].length) continue;
       const c = cloneState(state);
-      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, 1);
+      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, { t: 'tf', i }, 1);
     }
 
     // Waste top → tableau build.
@@ -503,7 +513,7 @@
         const dtop = dcol.length ? dcol[dcol.length - 1] : null;
         if (!canStackTableau(wc, dtop)) continue;
         const c = cloneState(state);
-        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, 2);
+        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, { t: 'wt', j }, 2);
       }
     }
 
@@ -523,7 +533,7 @@
           if (dcol.length === 0 && s === f && f === 0) continue; // relocating a whole column to empty = useless
           const c = cloneState(state);
           if (moveCards(c, { pile: 'tableau', index: i, cardIndex: s }, { pile: 'tableau', index: j }) !== null) {
-            add(c, flips ? 0 : 2);
+            add(c, { t: 'tt', i, ci: s, j }, flips ? 0 : 2);
           }
         }
       }
@@ -531,14 +541,16 @@
 
     // Draw / recycle (lowest priority).
     if (state.stock.length > 0) {
-      const c = cloneState(state); drawStock(c); add(c, 3);
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 3);
     } else if (state.waste.length > 0) {
-      const c = cloneState(state); drawStock(c); add(c, 4);
+      const c = cloneState(state); drawStock(c); add(c, { t: 'draw' }, 4);
     }
 
     out.sort((a, b) => a.priority - b.priority);
-    return out.map(o => o.c);
+    return out;
   }
+
+  function genMoves(state) { return genMovesDesc(state).map(o => o.c); }
 
   // Resumable iterative depth-first search with a transposition table and a node
   // budget. `step(slice)` advances up to `slice` node expansions and returns
@@ -584,7 +596,50 @@
     return r === 'win';
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver };
+  // Find a winning move sequence from `initial`, or null if none within budget.
+  // The result is an array of replayable descriptors (see genMovesDesc) that can
+  // be applied with applyMove() in order to reach a completed game. Used by the
+  // UI's Hint and Auto-solve. Operates on the CURRENT position, so it returns
+  // null when the player has already played into a dead end.
+  function solve(initial, maxNodes = 600000) {
+    let nodes = 0;
+    const visited = new Set();
+    const root = cloneState(initial);
+    const rootLog = [];
+    forcedAutoplayLog(root, rootLog);
+    if (isWon(root)) return rootLog;
+    visited.add(canonicalKey(root));
+    const stack = [{ gen: genMovesDesc(root), i: 0, path: rootLog }];
+    while (stack.length) {
+      if (++nodes > maxNodes) return null;
+      const top = stack[stack.length - 1];
+      if (top.i >= top.gen.length) { stack.pop(); continue; }
+      const mv = top.gen[top.i++];
+      const child = mv.c;                 // explicit move already applied
+      const log = [mv.desc];
+      forcedAutoplayLog(child, log);      // record the safe autoplays that follow
+      const path = top.path.concat(log);
+      if (isWon(child)) return path;
+      const key = canonicalKey(child);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      stack.push({ gen: genMovesDesc(child), i: 0, path });
+    }
+    return null;
+  }
+
+  // Apply a single solver descriptor to a live state using public operations.
+  // Returns the state (mutated) or null if the move was not legal.
+  function applyMove(state, d) {
+    if (d.t === 'draw') return drawStock(state);
+    if (d.t === 'wf') return autoToFoundation(state, { pile: 'waste' }) ? state : null;
+    if (d.t === 'tf') return autoToFoundation(state, { pile: 'tableau', index: d.i }) ? state : null;
+    if (d.t === 'wt') return moveCards(state, { pile: 'waste' }, { pile: 'tableau', index: d.j });
+    if (d.t === 'tt') return moveCards(state, { pile: 'tableau', index: d.i, cardIndex: d.ci }, { pile: 'tableau', index: d.j });
+    return null;
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver, solve, applyMove };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };
@@ -780,19 +835,86 @@
       setTimeout(step, 0);
     }
 
-    function showSearching() {
-      if (document.getElementById('searching')) return;
+    function showSearching(label = 'Finding a winnable game…') {
+      hideSearching();
       const o = document.createElement('div');
       o.id = 'searching';
       o.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.25);z-index:200;display:grid;place-items:center';
       o.addEventListener('click', e => e.stopPropagation());
       o.innerHTML = '<div class="dialog"><div class="bar">Solitaire</div>' +
-        '<div class="body">Finding a winnable game…</div></div>';
+        '<div class="body">' + label + '</div></div>';
       document.getElementById('window').appendChild(o);
     }
     function hideSearching() {
       const o = document.getElementById('searching');
       if (o) o.remove();
+    }
+
+    // ----- Hint & Auto-solve (solver-powered) -----
+    const SOLVE_LIMIT = 600000;
+
+    function clearHints() { felt.querySelectorAll('.hint').forEach(e => e.classList.remove('hint')); }
+
+    function topTableauEl(j) {
+      const cards = [...felt.querySelectorAll('.card[data-pile="tableau"][data-index="' + j + '"]')];
+      if (cards.length) return cards.reduce((a, b) => (+b.dataset.cardIndex > +a.dataset.cardIndex ? b : a));
+      return felt.querySelector('.pile[data-pile="tableau"][data-index="' + j + '"]');
+    }
+
+    function highlightMove(d) {
+      clearHints();
+      const mark = el => { if (el) el.classList.add('hint'); };
+      if (d.t === 'draw') mark(felt.querySelector('[data-pile="stock"]'));
+      else if (d.t === 'wf') mark(felt.querySelector('.card[data-pile="waste"]'));
+      else if (d.t === 'wt') { mark(felt.querySelector('.card[data-pile="waste"]')); mark(topTableauEl(d.j)); }
+      else if (d.t === 'tf') mark(topTableauEl(d.i));
+      else if (d.t === 'tt') {
+        mark(felt.querySelector('.card[data-pile="tableau"][data-index="' + d.i + '"][data-card-index="' + d.ci + '"]'));
+        mark(topTableauEl(d.j));
+      }
+      setTimeout(clearHints, 2400);
+    }
+
+    function infoDialog(title, text) {
+      const p = document.createElement('div');
+      p.innerHTML = text;
+      dialog(title, p, null);
+    }
+
+    function hint() {
+      if (document.querySelector('.overlay') || document.getElementById('searching') || drag) return;
+      showSearching('Thinking…');
+      setTimeout(() => {
+        const path = Solitaire.solve(Solitaire.cloneState(state), SOLVE_LIMIT);
+        hideSearching();
+        if (!path || !path.length) {
+          infoDialog('Hint', 'No winning move from this position. Press Ctrl+Z to undo and try a different line.');
+          return;
+        }
+        highlightMove(path[0]);
+      }, 20);
+    }
+
+    function autoSolve() {
+      if (document.querySelector('.overlay') || document.getElementById('searching') || drag) return;
+      showSearching('Solving…');
+      setTimeout(() => {
+        const path = Solitaire.solve(Solitaire.cloneState(state), SOLVE_LIMIT);
+        hideSearching();
+        if (!path) {
+          infoDialog('Solve', 'No winning sequence from the current position. Press Ctrl+Z to undo and try a different line.');
+          return;
+        }
+        let k = 0;
+        const tick = () => {
+          if (k >= path.length) { if (Solitaire.isWon(state)) winGame(); return; }
+          pushHistory();
+          Solitaire.applyMove(state, path[k++]);
+          render();
+          setTimeout(tick, 130);
+        };
+        tick();
+      }, 20);
     }
 
     function pushHistory() { history.push(Solitaire.cloneState(state)); }
@@ -981,6 +1103,7 @@
         e.preventDefault();
         pushHistory(); Solitaire.drawStock(state); render();
       }
+      else if (e.key === 'h' || e.key === 'H') { e.preventDefault(); hint(); }
     });
 
     const CARD_BACKS = {
@@ -1036,6 +1159,9 @@
       openDropdown(e.currentTarget, [
         { label: 'New Game  (F2)', action: () => newGame() },
         { label: 'Undo  (Ctrl+Z)', action: () => undo() },
+        '-',
+        { label: 'Hint  (H)', action: hint },
+        { label: 'Solve', action: autoSolve },
         '-',
         { label: 'Deck…', action: openDeckPicker },
         { label: 'Options…', action: openOptions },
