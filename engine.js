@@ -232,6 +232,17 @@
     return false;
   }
 
+  // Right-clicking empty space auto-advances: play one beneficial card to a
+  // foundation (waste top first, then tableau tops left-to-right).
+  // Returns true if a move happened.
+  function autoAdvance(state) {
+    if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) return true;
+    for (let i = 0; i < 7; i++) {
+      if (state.tableau[i].length && autoToFoundation(state, { pile: 'tableau', index: i })) return true;
+    }
+    return false;
+  }
+
   function isWon(state) {
     return state.foundations.every(f => f.length === 13);
   }
@@ -277,7 +288,7 @@
     return Math.floor(700000 / seconds);
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };

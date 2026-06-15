@@ -360,6 +360,17 @@
     return false;
   }
 
+  // Right-clicking empty space auto-advances: play one beneficial card to a
+  // foundation (waste top first, then tableau tops left-to-right).
+  // Returns true if a move happened.
+  function autoAdvance(state) {
+    if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) return true;
+    for (let i = 0; i < 7; i++) {
+      if (state.tableau[i].length && autoToFoundation(state, { pile: 'tableau', index: i })) return true;
+    }
+    return false;
+  }
+
   function isWon(state) {
     return state.foundations.every(f => f.length === 13);
   }
@@ -405,7 +416,7 @@
     return Math.floor(700000 / seconds);
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };
@@ -676,17 +687,30 @@
       else history.pop();
     }
 
+    function tryAutoAdvance() {
+      pushHistory();
+      if (Solitaire.autoAdvance(state)) { render(); afterMove(); }
+      else history.pop();
+    }
+
+    function isMovableCard(el) {
+      return el && el.classList.contains('card') &&
+        !el.classList.contains('back') && el.dataset.pile !== 'stock';
+    }
+
     felt.addEventListener('dblclick', (e) => {
       const el = e.target.closest('.card');
-      if (!el || el.classList.contains('back') || el.dataset.pile === 'stock') return;
+      if (!isMovableCard(el)) return;
       tryAutoMove(el);
     });
 
     felt.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const el = e.target.closest('.card');
-      if (!el || el.classList.contains('back') || el.dataset.pile === 'stock') return;
-      tryAutoMove(el);
+      // Right-click a movable card → smart place that card; right-click anywhere
+      // else (empty felt, a face-down card, the stock) → auto-advance one move.
+      if (isMovableCard(el)) tryAutoMove(el);
+      else tryAutoAdvance();
     });
 
     function undo() {

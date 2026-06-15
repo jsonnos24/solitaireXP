@@ -306,3 +306,27 @@ test('autoPlace: does not move a card onto an empty column', () => {
   assert.equal(moved, false);
   assert.equal(s.waste.length, 1);
 });
+
+test('autoAdvance: plays the waste top to a foundation', () => {
+  const s = tableauState([[], [], [], [], [], [], []]);
+  s.foundations[0] = [C(1, 'H')];
+  s.waste = [C(5, 'C'), C(2, 'H')]; // top is 2H, builds on the heart foundation
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 1);
+  assert.deepEqual(s.foundations[0].map(c => c.rank + c.suit), ['1H', '2H']);
+});
+
+test('autoAdvance: falls back to a tableau top when waste has no foundation move', () => {
+  const s = tableauState([[C(1, 'S')], [], [], [], [], [], []]);
+  s.waste = [C(9, 'H')]; // 9H cannot go to a foundation
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, true);
+  assert.ok(s.foundations.some(f => f.length === 1 && f[0].rank === 1 && f[0].suit === 'S'));
+});
+
+test('autoAdvance: returns false when no foundation move exists anywhere', () => {
+  const s = tableauState([[C(9, 'H')], [C(8, 'S')], [], [], [], [], []]);
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, false);
+});
