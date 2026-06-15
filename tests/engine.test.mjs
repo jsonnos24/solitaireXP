@@ -350,3 +350,33 @@ test('autoAdvance: returns false when truly no move exists', () => {
   const moved = Solitaire.autoAdvance(s);
   assert.equal(moved, false);
 });
+
+test('isWinnable: true for a state one safe move from winning', () => {
+  // Foundations: H,D,C up to King; S up to Queen. The King of Spades sits on the tableau.
+  const s = tableauState([[C(13, 'S')], [], [], [], [], [], []]);
+  s.foundations = [
+    Array.from({ length: 13 }, (_, i) => C(i + 1, 'H')),
+    Array.from({ length: 13 }, (_, i) => C(i + 1, 'D')),
+    Array.from({ length: 13 }, (_, i) => C(i + 1, 'C')),
+    Array.from({ length: 12 }, (_, i) => C(i + 1, 'S')),
+  ];
+  assert.equal(Solitaire.isWinnable(s), true);
+});
+
+test('isWinnable: false for a deadlocked, unwinnable state', () => {
+  // Two kings, opposite... still no aces available and nothing can move → cannot win.
+  const s = tableauState([[C(13, 'S')], [C(13, 'H')], [], [], [], [], []]);
+  // foundations empty, no stock/waste, no aces anywhere
+  assert.equal(Solitaire.isWinnable(s), false);
+});
+
+test('isWinnable: a freshly dealt game returns a boolean and at least some deals are winnable', () => {
+  let winnable = 0;
+  for (let seed = 1; seed <= 12; seed++) {
+    const st = Solitaire.deal(Solitaire.makeRng(seed), 1);
+    const r = Solitaire.isWinnable(st, 120000);
+    assert.equal(typeof r, 'boolean');
+    if (r) winnable++;
+  }
+  assert.ok(winnable >= 1, 'expected at least one of 12 Draw-1 deals to be solved within budget, got ' + winnable);
+});

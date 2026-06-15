@@ -425,7 +425,166 @@
     return Math.floor(700000 / seconds);
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus };
+  // ---------- Solver (used to generate guaranteed-winnable deals) ----------
+  // Soundness over completeness: if isWinnable returns true a real winning line
+  // exists. It may give up (return false) on hard/over-budget deals — that's fine,
+  // the caller just reshuffles and tries another deal.
+
+  function foundationRank(state, suit) {
+    for (const f of state.foundations) {
+      if (f.length && f[0].suit === suit) return f[f.length - 1].rank;
+    }
+    return 0;
+  }
+
+  // A card is safe to force onto a foundation when it can never be needed to
+  // receive a lower card of the opposite color (classic Microsoft autoplay rule).
+  function isSafeToFoundation(state, card) {
+    if (card.rank <= 2) return true;
+    const opp = isRed(card.suit) ? ['S', 'C'] : ['H', 'D'];
+    const oppMin = Math.min(foundationRank(state, opp[0]), foundationRank(state, opp[1]));
+    return oppMin >= card.rank - 1;
+  }
+
+  // Deterministically play all currently-safe cards to the foundations.
+  function forcedAutoplay(state) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      if (state.waste.length) {
+        const c = state.waste[state.waste.length - 1];
+        if (isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'waste' })) { changed = true; continue; }
+      }
+      for (let i = 0; i < 7; i++) {
+        const col = state.tableau[i];
+        if (!col.length) continue;
+        const c = col[col.length - 1];
+        if (c.faceUp && isSafeToFoundation(state, c) && autoToFoundation(state, { pile: 'tableau', index: i })) {
+          changed = true; break;
+        }
+      }
+    }
+  }
+
+  // Canonical key for the transposition table. Tableau columns are sorted so that
+  // column permutations collapse to one state.
+  function canonicalKey(state) {
+    const cols = state.tableau
+      .map(col => col.map(c => (c.faceUp ? '+' : '-') + c.rank + c.suit).join(','))
+      .sort().join('|');
+    const f = state.foundations
+      .map(p => (p.length ? p[0].suit + p[p.length - 1].rank : '_')).sort().join(',');
+    const stock = state.stock.map(c => c.rank + c.suit).join(',');
+    const waste = state.waste.map(c => c.rank + c.suit).join(',');
+    return cols + '#' + f + '#' + stock + '#' + waste + '#' + state.drawCount;
+  }
+
+  // Generate successor states, ordered best-first (lower priority = tried first).
+  function genMoves(state) {
+    const out = [];
+    const add = (c, priority) => { if (c) out.push({ c, priority }); };
+
+    // Non-safe foundation moves (safe ones are already auto-played): waste + tableau tops.
+    if (state.waste.length) {
+      const c = cloneState(state);
+      if (autoToFoundation(c, { pile: 'waste' })) add(c, 1);
+    }
+    for (let i = 0; i < 7; i++) {
+      if (!state.tableau[i].length) continue;
+      const c = cloneState(state);
+      if (autoToFoundation(c, { pile: 'tableau', index: i })) add(c, 1);
+    }
+
+    // Waste top → tableau build.
+    if (state.waste.length) {
+      const wc = state.waste[state.waste.length - 1];
+      for (let j = 0; j < 7; j++) {
+        const dcol = state.tableau[j];
+        const dtop = dcol.length ? dcol[dcol.length - 1] : null;
+        if (!canStackTableau(wc, dtop)) continue;
+        const c = cloneState(state);
+        if (moveCards(c, { pile: 'waste' }, { pile: 'tableau', index: j }) !== null) add(c, 2);
+      }
+    }
+
+    // Tableau run → tableau (any face-up suffix onto a matching column).
+    for (let i = 0; i < 7; i++) {
+      const col = state.tableau[i];
+      let f = col.length;
+      for (let x = 0; x < col.length; x++) { if (col[x].faceUp) { f = x; break; } }
+      for (let s = f; s < col.length; s++) {
+        const card = col[s];
+        const flips = s > 0 && !col[s - 1].faceUp;
+        for (let j = 0; j < 7; j++) {
+          if (j === i) continue;
+          const dcol = state.tableau[j];
+          const dtop = dcol.length ? dcol[dcol.length - 1] : null;
+          if (!canStackTableau(card, dtop)) continue;
+          if (dcol.length === 0 && s === f && f === 0) continue; // relocating a whole column to empty = useless
+          const c = cloneState(state);
+          if (moveCards(c, { pile: 'tableau', index: i, cardIndex: s }, { pile: 'tableau', index: j }) !== null) {
+            add(c, flips ? 0 : 2);
+          }
+        }
+      }
+    }
+
+    // Draw / recycle (lowest priority).
+    if (state.stock.length > 0) {
+      const c = cloneState(state); drawStock(c); add(c, 3);
+    } else if (state.waste.length > 0) {
+      const c = cloneState(state); drawStock(c); add(c, 4);
+    }
+
+    out.sort((a, b) => a.priority - b.priority);
+    return out.map(o => o.c);
+  }
+
+  // Resumable iterative depth-first search with a transposition table and a node
+  // budget. `step(slice)` advances up to `slice` node expansions and returns
+  // 'win' | 'fail' | 'pending', so a caller can spread a search across many
+  // animation/timeout slices without blocking the UI thread.
+  function makeSolver(initial, maxNodes = 200000) {
+    let nodes = 0;
+    let finished = false, won = false;
+    const visited = new Set();
+    const root = cloneState(initial);
+    forcedAutoplay(root);
+    let stack = null;
+    if (isWon(root)) { finished = true; won = true; }
+    else { visited.add(canonicalKey(root)); stack = [{ moves: genMoves(root), i: 0 }]; }
+    return {
+      step(slice = 8000) {
+        if (finished) return won ? 'win' : 'fail';
+        let used = 0;
+        while (stack.length) {
+          if (++nodes > maxNodes) { finished = true; return 'fail'; }
+          if (++used > slice) return 'pending';
+          const top = stack[stack.length - 1];
+          if (top.i >= top.moves.length) { stack.pop(); continue; }
+          const next = top.moves[top.i++];
+          forcedAutoplay(next);
+          if (isWon(next)) { finished = true; won = true; return 'win'; }
+          const key = canonicalKey(next);
+          if (visited.has(key)) continue;
+          visited.add(key);
+          stack.push({ moves: genMoves(next), i: 0 });
+        }
+        finished = true;
+        return 'fail';
+      },
+    };
+  }
+
+  // Synchronous convenience wrapper: true if a winning line exists within budget.
+  function isWinnable(initial, maxNodes = 200000) {
+    const solver = makeSolver(initial, maxNodes);
+    let r;
+    do { r = solver.step(Infinity); } while (r === 'pending');
+    return r === 'win';
+  }
+
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock, autoToFoundation, autoPlace, autoAdvance, isWon, canAutoComplete, autoCompleteStep, cloneState, timeBonus, isWinnable, makeSolver };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };
@@ -540,15 +699,100 @@
         ' · ' + (state.timed ? 'Timed' : 'Standard');
     }
 
-    function newGame(opts = {}) {
+    // ----- Winnable-only deals with a background preload buffer -----
+    let winnableOnly = true;          // verify every deal is solvable before playing
+    let currentDraw = 3;              // draw mode of the active/looked-up game
+    let searching = false;            // a foreground (overlay) search is running
+    let refillScheduled = false;
+    const winnableBuffer = { 1: [], 3: [] }; // pre-verified winnable seeds per draw mode
+    const BUFFER_TARGET = 5;
+    const SOLVE_BUDGET = 200000;      // solver node budget per candidate deal
+    const SLICE = 3000;               // node expansions per timeout tick (keeps UI smooth)
+
+    function randomSeed() { return (Math.random() * 2 ** 32) >>> 0; }
+
+    function applyDeal(seed, drawCount, timed) {
       stopWinAnimation();
-      const drawCount = opts.drawCount || (state ? state.drawCount : 3);
-      const timed = opts.timed != null ? opts.timed : (state ? state.timed : false);
-      state = Solitaire.deal(Solitaire.makeRng((Math.random() * 2 ** 32) >>> 0), drawCount);
+      state = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
       state.timed = timed;
       history = [];
       render();
       startTimer();
+    }
+
+    // Top up the winnable buffer for the current draw mode in small solver slices
+    // so the UI never blocks. Carries one candidate solver across ticks.
+    let refillSolver = null, refillSeed = 0, refillDraw = 3;
+    function scheduleRefill() {
+      if (refillScheduled || !winnableOnly) return;
+      refillScheduled = true;
+      setTimeout(pumpRefill, 0);
+    }
+    function pumpRefill() {
+      refillScheduled = false;
+      if (!winnableOnly) { refillSolver = null; return; }
+      const dc = currentDraw;
+      if (winnableBuffer[dc].length >= BUFFER_TARGET) { refillSolver = null; return; }
+      if (searching) { refillScheduled = true; setTimeout(pumpRefill, 150); return; } // yield to foreground
+      if (!refillSolver) {
+        refillSeed = randomSeed();
+        refillDraw = dc;
+        refillSolver = Solitaire.makeSolver(Solitaire.deal(Solitaire.makeRng(refillSeed), dc), SOLVE_BUDGET);
+      }
+      const r = refillSolver.step(SLICE);
+      if (r === 'win') { winnableBuffer[refillDraw].push(refillSeed); refillSolver = null; }
+      else if (r === 'fail') { refillSolver = null; }
+      refillScheduled = true;
+      setTimeout(pumpRefill, 0);
+    }
+
+    function newGame(opts = {}) {
+      const drawCount = opts.drawCount || (state ? state.drawCount : 3);
+      const timed = opts.timed != null ? opts.timed : (state ? state.timed : false);
+      currentDraw = drawCount;
+      if (!winnableOnly) { applyDeal(randomSeed(), drawCount, timed); return; }
+      const q = winnableBuffer[drawCount];
+      if (q && q.length) { applyDeal(q.shift(), drawCount, timed); scheduleRefill(); return; }
+      foregroundSearch(drawCount, timed); // buffer empty → search now with an overlay
+    }
+
+    function foregroundSearch(drawCount, timed) {
+      searching = true;
+      showSearching();
+      stopTimer();
+      let tries = 0, seed = 0, solver = null;
+      const MAX_TRIES = 800;
+      const finish = (s) => {
+        searching = false; hideSearching();
+        applyDeal(s, drawCount, timed);
+        scheduleRefill();
+      };
+      const step = () => {
+        if (!solver) {
+          seed = randomSeed();
+          solver = Solitaire.makeSolver(Solitaire.deal(Solitaire.makeRng(seed), drawCount), SOLVE_BUDGET);
+        }
+        const r = solver.step(SLICE);
+        if (r === 'win') { finish(seed); return; }
+        if (r === 'fail') { solver = null; if (++tries >= MAX_TRIES) { finish(seed); return; } }
+        setTimeout(step, 0);
+      };
+      setTimeout(step, 0);
+    }
+
+    function showSearching() {
+      if (document.getElementById('searching')) return;
+      const o = document.createElement('div');
+      o.id = 'searching';
+      o.style.cssText = 'position:absolute;inset:0;background:rgba(0,0,0,.25);z-index:200;display:grid;place-items:center';
+      o.addEventListener('click', e => e.stopPropagation());
+      o.innerHTML = '<div class="dialog"><div class="bar">Solitaire</div>' +
+        '<div class="body">Finding a winnable game…</div></div>';
+      document.getElementById('window').appendChild(o);
+    }
+    function hideSearching() {
+      const o = document.getElementById('searching');
+      if (o) o.remove();
     }
 
     function pushHistory() { history.push(Solitaire.cloneState(state)); }
@@ -832,12 +1076,15 @@
       wrap.innerHTML =
         '<div class="row"><label><input type="radio" name="draw" value="1"> Draw One</label> ' +
         '<label><input type="radio" name="draw" value="3"> Draw Three</label></div>' +
-        '<div class="row"><label><input type="checkbox" id="opt-timed"> Timed game</label></div>';
+        '<div class="row"><label><input type="checkbox" id="opt-timed"> Timed game</label></div>' +
+        '<div class="row"><label><input type="checkbox" id="opt-winnable"> Winnable deals only</label></div>';
       wrap.querySelector('input[value="' + state.drawCount + '"]').checked = true;
       wrap.querySelector('#opt-timed').checked = state.timed;
+      wrap.querySelector('#opt-winnable').checked = winnableOnly;
       dialog('Options', wrap, () => {
         const draw = +wrap.querySelector('input[name="draw"]:checked').value;
         const timed = wrap.querySelector('#opt-timed').checked;
+        winnableOnly = wrap.querySelector('#opt-winnable').checked;
         newGame({ drawCount: draw, timed });
         savePrefs();
       });
@@ -852,7 +1099,7 @@
     function savePrefs() {
       try {
         localStorage.setItem('xp-solitaire', JSON.stringify({
-          cardBack, drawCount: state.drawCount, timed: state.timed,
+          cardBack, drawCount: state.drawCount, timed: state.timed, winnableOnly,
         }));
       } catch (_) {}
     }
@@ -860,6 +1107,7 @@
       try {
         const p = JSON.parse(localStorage.getItem('xp-solitaire') || '{}');
         if (p.cardBack && CARD_BACKS[p.cardBack]) cardBack = p.cardBack;
+        if (typeof p.winnableOnly === 'boolean') winnableOnly = p.winnableOnly;
         return p;
       } catch (_) { return {}; }
     }
@@ -937,6 +1185,7 @@
     felt.addEventListener('pointerdown', () => { if (winRaf) { stopWinAnimation(); } }, true);
     const prefs = loadPrefs();
     newGame({ drawCount: prefs.drawCount || 3, timed: !!prefs.timed });
+    scheduleRefill();
   </script>
 </body>
 </html>
