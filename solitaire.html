@@ -418,6 +418,7 @@
       closeMenus();
       const overlay = document.createElement('div');
       overlay.className = 'overlay';
+      overlay.addEventListener('click', e => e.stopPropagation());
       const dlg = document.createElement('div');
       dlg.className = 'dialog';
       const bar = document.createElement('div'); bar.className = 'bar'; bar.textContent = title;
