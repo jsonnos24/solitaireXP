@@ -220,14 +220,16 @@
       }
     }
 
-    // 2) Tableau build onto a non-empty column whose top card accepts the run.
+    // 2) Tableau build. A non-empty column must accept the run; an empty column
+    //    accepts only a King. Skip pointlessly relocating a whole face-up column
+    //    (no face-down beneath) to another empty column.
     for (let i = 0; i < 7; i++) {
       if (src.pile === 'tableau' && i === src.index) continue; // don't move onto itself
       const col = state.tableau[i];
-      if (col.length === 0) continue;
-      if (canStackTableau(moving[0], col[col.length - 1])) {
-        return moveCards(state, src, { pile: 'tableau', index: i }) !== null;
-      }
+      const top = col.length ? col[col.length - 1] : null;
+      if (!canStackTableau(moving[0], top)) continue;
+      if (top === null && src.pile === 'tableau' && src.cardIndex === 0) continue;
+      return moveCards(state, src, { pile: 'tableau', index: i }) !== null;
     }
     return false;
   }

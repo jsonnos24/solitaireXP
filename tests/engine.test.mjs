@@ -451,3 +451,38 @@ test('solve produces a replayable winning line that actually completes (Draw Thr
   const seed = proveWinnable(3, 40);
   assert.ok(seed > 0, 'expected to prove at least one Draw-Three deal end-to-end');
 });
+
+test('autoPlace: moves a King to an empty column, exposing a face-down card', () => {
+  const s = tableauState([[C(5, 'H', false), C(13, 'S')], [], [], [], [], [], []]);
+  const moved = Solitaire.autoPlace(s, { pile: 'tableau', index: 0, cardIndex: 1 });
+  assert.equal(moved, true);
+  assert.deepEqual(s.tableau[1].map(c => c.rank + c.suit), ['13S']);
+  assert.equal(s.tableau[0].length, 1);
+  assert.equal(s.tableau[0][0].faceUp, true); // 5H flipped
+});
+
+test('autoPlace: moves a King from the waste to an empty column', () => {
+  const s = tableauState([[], [], [], [], [], [], []]);
+  s.waste = [C(13, 'H')];
+  const moved = Solitaire.autoPlace(s, { pile: 'waste' });
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 0);
+  assert.ok(s.tableau.some(col => col.length === 1 && col[0].rank === 13));
+});
+
+test('autoPlace: does NOT relocate a lone King to another empty column', () => {
+  const s = tableauState([[C(13, 'S')], [], [], [], [], [], []]);
+  const moved = Solitaire.autoPlace(s, { pile: 'tableau', index: 0, cardIndex: 0 });
+  assert.equal(moved, false);
+  assert.equal(s.tableau[0].length, 1);
+});
+
+test('autoAdvance: places a King into a free column (right-click empty space)', () => {
+  // King on waste, no foundation move, an empty column available
+  const s = tableauState([[C(9, 'C')], [], [], [], [], [], []]);
+  s.waste = [C(13, 'H')];
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, true);
+  assert.equal(s.waste.length, 0);
+  assert.ok(s.tableau.some(col => col.length === 1 && col[0].rank === 13 && col[0].suit === 'H'));
+});
