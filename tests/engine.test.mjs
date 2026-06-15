@@ -380,3 +380,46 @@ test('isWinnable: a freshly dealt game returns a boolean and at least some deals
   }
   assert.ok(winnable >= 1, 'expected at least one of 12 Draw-1 deals to be solved within budget, got ' + winnable);
 });
+
+// ---- Deck integrity: all 52 cards must be present at all times ----
+function allCards(state) {
+  const xs = [];
+  state.stock.forEach(c => xs.push(c));
+  state.waste.forEach(c => xs.push(c));
+  state.foundations.forEach(f => f.forEach(c => xs.push(c)));
+  state.tableau.forEach(col => col.forEach(c => xs.push(c)));
+  return xs;
+}
+function assertCompleteDeck(state, where) {
+  const xs = allCards(state);
+  assert.equal(xs.length, 52, 'card count at ' + where);
+  const ids = new Set(xs.map(c => c.rank + c.suit));
+  assert.equal(ids.size, 52, 'unique cards at ' + where);
+}
+
+test('deck stays complete (52 unique cards) through thousands of random operations', () => {
+  for (const dc of [1, 3]) {
+    for (let seed = 1; seed <= 8; seed++) {
+      const s = Solitaire.deal(Solitaire.makeRng(seed), dc);
+      assertCompleteDeck(s, 'deal');
+      const rng = Solitaire.makeRng(seed * 31 + 5);
+      for (let step = 0; step < 500; step++) {
+        const r = rng();
+        if (r < 0.4) {
+          Solitaire.drawStock(s);
+        } else if (r < 0.65) {
+          Solitaire.autoToFoundation(s, { pile: 'waste' }) ||
+            Solitaire.autoToFoundation(s, { pile: 'tableau', index: Math.floor(rng() * 7) });
+        } else {
+          const i = Math.floor(rng() * 7), col = s.tableau[i];
+          if (col.length) {
+            const ci = Math.floor(rng() * col.length), j = Math.floor(rng() * 7);
+            Solitaire.moveCards(s, { pile: 'tableau', index: i, cardIndex: ci }, { pile: 'tableau', index: j });
+          }
+          Solitaire.moveCards(s, { pile: 'waste' }, { pile: 'tableau', index: Math.floor(rng() * 7) });
+        }
+        assertCompleteDeck(s, 'dc=' + dc + ' seed=' + seed + ' step=' + step);
+      }
+    }
+  }
+});
