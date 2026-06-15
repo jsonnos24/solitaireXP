@@ -149,7 +149,11 @@
       felt.innerHTML = '';
       felt.appendChild(slot(GAP, TOP));
       felt.appendChild(slot(GAP + COL_W, TOP));
-      for (let i = 0; i < 4; i++) felt.appendChild(slot(GAP + (3 + i) * COL_W, TOP));
+      for (let i = 0; i < 4; i++) {
+        const fs = slot(GAP + (3 + i) * COL_W, TOP);
+        fs.dataset.pile = 'foundation'; fs.dataset.index = i;
+        felt.appendChild(fs);
+      }
 
       if (state.stock.length) {
         const b = cardEl({ rank: 0, suit: 'S', faceUp: false });
@@ -177,7 +181,9 @@
       const tableauTop = TOP + 120;
       state.tableau.forEach((col, ci) => {
         const x = GAP + ci * COL_W;
-        felt.appendChild(slot(x, tableauTop));
+        const ts = slot(x, tableauTop);
+        ts.dataset.pile = 'tableau'; ts.dataset.index = ci;
+        felt.appendChild(ts);
         col.forEach((card, ri) => {
           const el = cardEl(card);
           place(el, x, tableauTop + ri * ROW);
@@ -268,11 +274,14 @@
         drag.els.push({ ce, offset: i * ROW });
       });
       felt.querySelectorAll('.card').forEach(c => {
-        if (c.dataset.pile === src.pile &&
-            (src.pile !== 'tableau' || +c.dataset.index === src.index) &&
-            (src.pile !== 'tableau' || +c.dataset.cardIndex >= src.cardIndex)) {
-          if (!dragLayer.contains(c)) c.style.visibility = 'hidden';
+        if (c.dataset.pile !== src.pile) return;
+        if (src.pile === 'tableau') {
+          if (+c.dataset.index !== src.index) return;
+          if (+c.dataset.cardIndex < src.cardIndex) return;
+        } else if (src.pile === 'foundation') {
+          if (+c.dataset.index !== src.index) return;
         }
+        if (!dragLayer.contains(c)) c.style.visibility = 'hidden';
       });
       felt.setPointerCapture(e.pointerId);
     });
