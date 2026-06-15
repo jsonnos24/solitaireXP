@@ -535,6 +535,7 @@
     }
 
     felt.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return; // only the primary button starts a drag; let right-click reach contextmenu
       const el = e.target.closest('.card');
       if (!el || el.classList.contains('back')) return;
       if (el.dataset.pile === 'stock') return;
