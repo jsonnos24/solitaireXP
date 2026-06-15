@@ -167,3 +167,25 @@ test('drawStock recycles waste back to stock (face-down) and counts recycle', ()
   assert.equal(s.recycles, 1);
   assert.equal(s.score, 0);
 });
+
+test('drawStock applies no penalty on recycles 1-3', () => {
+  const s = stockState([], 1);
+  s.score = 500; s.recycles = 2; // next recycle will be #3
+  Solitaire.drawStock(s);
+  assert.equal(s.recycles, 3);
+  assert.equal(s.score, 500); // no penalty through the 3rd pass
+});
+
+test('drawStock applies penalty starting on the 4th recycle (100 Draw1, 20 Draw3)', () => {
+  const s1 = stockState([], 1);
+  s1.score = 500; s1.recycles = 3; // next recycle will be #4
+  Solitaire.drawStock(s1);
+  assert.equal(s1.recycles, 4);
+  assert.equal(s1.score, 400); // -100 for Draw One
+
+  const s3 = stockState([], 3);
+  s3.score = 500; s3.recycles = 3;
+  Solitaire.drawStock(s3);
+  assert.equal(s3.recycles, 4);
+  assert.equal(s3.score, 480); // -20 for Draw Three
+});

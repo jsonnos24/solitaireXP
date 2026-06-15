@@ -93,7 +93,7 @@
       }
       state.recycles += 1;
       const penalty = state.drawCount === 1 ? 100 : 20;
-      if (state.recycles > 0) state.score = clampScore(state.score - penalty);
+      if (state.recycles > 3) state.score = clampScore(state.score - penalty);
       return state;
     }
     const n = Math.min(state.drawCount, state.stock.length);
