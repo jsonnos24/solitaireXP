@@ -47,6 +47,34 @@
     background: #ece9d8; border-top: 1px solid #fff;
   }
   #statusbar .spacer { flex: 1; }
+  .pile {
+    position: absolute; width: 72px; height: 100px; border-radius: 6px;
+  }
+  .pile.slot { border: 2px dashed rgba(255,255,255,.35); }
+  .card {
+    position: absolute; width: 72px; height: 100px; border-radius: 6px;
+    background: #fff; border: 1px solid #999; box-shadow: 0 1px 2px rgba(0,0,0,.3);
+    font-family: Georgia, "Times New Roman", serif; cursor: pointer;
+  }
+  .card .corner {
+    position: absolute; top: 4px; left: 5px; font-size: 15px; font-weight: bold;
+    line-height: 1; text-align: center;
+  }
+  .card .corner.br {
+    top: auto; left: auto; bottom: 4px; right: 5px; transform: rotate(180deg);
+  }
+  .card .pip {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 34px;
+  }
+  .card.face .pip { font-weight: bold; font-size: 30px; }
+  .card.red { color: #c00; }
+  .card.black { color: #111; }
+  .card.back {
+    background: repeating-linear-gradient(45deg, #1b4ea8 0 4px, #3a6fd0 4px 8px);
+    border: 2px solid #fff;
+  }
+  .card.dragging { opacity: .6; }
 </style>
 </head>
 <body>
@@ -73,7 +101,106 @@
 
   <script src="engine.js"></script>
   <script>
-    // Game wiring is added in later tasks.
+    const RANKS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
+    const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
+    const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+
+    const felt = document.getElementById('felt');
+    let state = null;
+    let history = [];
+
+    function rankLabel(r) { return RANKS[r] || String(r); }
+
+    function cardEl(card) {
+      const el = document.createElement('div');
+      el.className = 'card ' + (Solitaire.isRed(card.suit) ? 'red' : 'black');
+      if (!card.faceUp) { el.className = 'card back'; return el; }
+      if (card.rank > 10) el.classList.add('face');
+      const label = rankLabel(card.rank) + '\n' + SUIT_GLYPH[card.suit];
+      const tl = document.createElement('div');
+      tl.className = 'corner';
+      tl.style.whiteSpace = 'pre';
+      tl.textContent = label;
+      const br = document.createElement('div');
+      br.className = 'corner br';
+      br.style.whiteSpace = 'pre';
+      br.textContent = label;
+      const pip = document.createElement('div');
+      pip.className = 'pip';
+      pip.textContent = card.rank > 10 ? rankLabel(card.rank) : SUIT_GLYPH[card.suit];
+      el.append(tl, br, pip);
+      return el;
+    }
+
+    function place(el, x, y) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
+
+    function slot(x, y) {
+      const s = document.createElement('div');
+      s.className = 'pile slot';
+      place(s, x, y);
+      return s;
+    }
+
+    function render() {
+      felt.innerHTML = '';
+      felt.appendChild(slot(GAP, TOP));
+      felt.appendChild(slot(GAP + COL_W, TOP));
+      for (let i = 0; i < 4; i++) felt.appendChild(slot(GAP + (3 + i) * COL_W, TOP));
+
+      if (state.stock.length) {
+        const b = cardEl({ rank: 0, suit: 'S', faceUp: false });
+        place(b, GAP, TOP); b.dataset.pile = 'stock';
+        felt.appendChild(b);
+      } else {
+        const r = slot(GAP, TOP); r.dataset.pile = 'stock';
+        r.style.cursor = 'pointer'; r.textContent = '';
+        felt.appendChild(r);
+      }
+      if (state.waste.length) {
+        const c = state.waste[state.waste.length - 1];
+        const el = cardEl(c); place(el, GAP + COL_W, TOP);
+        el.dataset.pile = 'waste';
+        felt.appendChild(el);
+      }
+      state.foundations.forEach((f, i) => {
+        if (f.length) {
+          const el = cardEl(f[f.length - 1]);
+          place(el, GAP + (3 + i) * COL_W, TOP);
+          el.dataset.pile = 'foundation'; el.dataset.index = i;
+          felt.appendChild(el);
+        }
+      });
+      const tableauTop = TOP + 120;
+      state.tableau.forEach((col, ci) => {
+        const x = GAP + ci * COL_W;
+        felt.appendChild(slot(x, tableauTop));
+        col.forEach((card, ri) => {
+          const el = cardEl(card);
+          place(el, x, tableauTop + ri * ROW);
+          el.dataset.pile = 'tableau'; el.dataset.index = ci; el.dataset.cardIndex = ri;
+          felt.appendChild(el);
+        });
+      });
+      updateStatus();
+    }
+
+    function updateStatus() {
+      document.getElementById('status-score').textContent = 'Score: ' + state.score;
+      document.getElementById('status-mode').textContent =
+        (state.drawCount === 1 ? 'Draw One' : 'Draw Three') +
+        ' · ' + (state.timed ? 'Timed' : 'Standard');
+    }
+
+    function newGame(opts = {}) {
+      const drawCount = opts.drawCount || (state ? state.drawCount : 3);
+      const timed = opts.timed != null ? opts.timed : (state ? state.timed : false);
+      state = Solitaire.deal(Solitaire.makeRng((Math.random() * 2 ** 32) >>> 0), drawCount);
+      state.timed = timed;
+      history = [];
+      render();
+    }
+
+    newGame();
   </script>
 </body>
 </html>
