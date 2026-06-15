@@ -124,3 +124,46 @@ test('moveCards: rejects an illegal move and leaves state unchanged', () => {
                                      { pile: 'tableau', index: 1 });
   assert.equal(out, null);
 });
+
+function stockState(stockRanks, drawCount) {
+  return {
+    stock: stockRanks.map(r => C(r, 'S', false)),
+    waste: [], foundations: [[], [], [], []],
+    tableau: [[], [], [], [], [], [], []],
+    drawCount, scoringMode: 'standard', timed: false, score: 0, recycles: 0,
+  };
+}
+
+test('drawStock (Draw 3) moves up to 3 cards to waste, face-up', () => {
+  const s = stockState([2, 3, 4, 5], 3);
+  Solitaire.drawStock(s);
+  assert.equal(s.waste.length, 3);
+  assert.ok(s.waste.every(c => c.faceUp));
+  assert.equal(s.stock.length, 1);
+});
+
+test('drawStock (Draw 3) moves remaining when fewer than 3 left', () => {
+  const s = stockState([2, 3], 3);
+  Solitaire.drawStock(s);
+  assert.equal(s.waste.length, 2);
+  assert.equal(s.stock.length, 0);
+});
+
+test('drawStock (Draw 1) moves one card', () => {
+  const s = stockState([2, 3, 4], 1);
+  Solitaire.drawStock(s);
+  assert.equal(s.waste.length, 1);
+  assert.equal(s.stock.length, 2);
+});
+
+test('drawStock recycles waste back to stock (face-down) and counts recycle', () => {
+  const s = stockState([], 1);
+  s.waste = [C(2, 'S'), C(3, 'S'), C(4, 'S')];
+  Solitaire.drawStock(s);
+  assert.equal(s.waste.length, 0);
+  assert.equal(s.stock.length, 3);
+  assert.ok(s.stock.every(c => !c.faceUp));
+  assert.deepEqual(s.stock.map(c => c.rank), [4, 3, 2]);
+  assert.equal(s.recycles, 1);
+  assert.equal(s.score, 0);
+});

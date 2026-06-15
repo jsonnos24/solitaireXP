@@ -83,6 +83,28 @@
 
   function clampScore(s) { return s < 0 ? 0 : s; }
 
+  function drawStock(state) {
+    if (state.stock.length === 0) {
+      // Recycle: move waste back to stock, face-down.
+      while (state.waste.length) {
+        const c = state.waste.pop();
+        c.faceUp = false;
+        state.stock.push(c);
+      }
+      state.recycles += 1;
+      const penalty = state.drawCount === 1 ? 100 : 20;
+      if (state.recycles > 0) state.score = clampScore(state.score - penalty);
+      return state;
+    }
+    const n = Math.min(state.drawCount, state.stock.length);
+    for (let i = 0; i < n; i++) {
+      const c = state.stock.pop();
+      c.faceUp = true;
+      state.waste.push(c);
+    }
+    return state;
+  }
+
   function peekSource(state, src) {
     if (src.pile === 'waste') {
       const top = state.waste[state.waste.length - 1];
@@ -155,7 +177,7 @@
     return state;
   }
 
-  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards };
+  const Solitaire = { SUITS, isRed, makeDeck, makeRng, shuffle, deal, canStackTableau, canStackFoundation, isValidSequence, moveCards, drawStock };
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = { Solitaire };
