@@ -347,7 +347,28 @@
     });
 
     function afterMove() {
-      // hooks added in later tasks (win check, auto-complete, persistence)
+      if (Solitaire.canAutoComplete(state)) { runAutoComplete(); return; }
+      if (Solitaire.isWon(state)) winGame();
+    }
+
+    function runAutoComplete() {
+      const tick = setInterval(() => {
+        const moved = Solitaire.autoCompleteStep(state);
+        render();
+        if (!moved) {
+          clearInterval(tick);
+          if (Solitaire.isWon(state)) winGame();
+        }
+      }, 120);
+    }
+
+    function winGame() {
+      stopTimer();
+      if (state.timed) {
+        state.score += Solitaire.timeBonus(elapsed);
+        updateStatus();
+      }
+      startWinAnimation();
     }
 
     function tryAutoFoundation(el) {
@@ -510,6 +531,8 @@
       }, 1000);
     }
     function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+    function startWinAnimation() { /* replaced in Task 18 */ }
 
     newGame();
   </script>
