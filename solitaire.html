@@ -546,7 +546,7 @@
     }
     function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
 
-    let winRaf = null;
+    let winRaf = null, winLauncher = null;
     function startWinAnimation() {
       const sources = [];
       state.foundations.forEach((f, i) => {
@@ -571,9 +571,9 @@
           vy: -(Math.random() * 6 + 4),
         });
       }
-      const launcher = setInterval(() => {
+      winLauncher = setInterval(() => {
         launch();
-        if (!queue.length) clearInterval(launcher);
+        if (!queue.length) { clearInterval(winLauncher); winLauncher = null; }
       }, 140);
 
       function step() {
@@ -598,6 +598,7 @@
 
     function stopWinAnimation() {
       if (winRaf) { cancelAnimationFrame(winRaf); winRaf = null; }
+      if (winLauncher) { clearInterval(winLauncher); winLauncher = null; }
     }
 
     felt.addEventListener('pointerdown', () => { if (winRaf) { stopWinAnimation(); } }, true);
