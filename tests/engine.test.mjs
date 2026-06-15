@@ -325,8 +325,28 @@ test('autoAdvance: falls back to a tableau top when waste has no foundation move
   assert.ok(s.foundations.some(f => f.length === 1 && f[0].rank === 1 && f[0].suit === 'S'));
 });
 
-test('autoAdvance: returns false when no foundation move exists anywhere', () => {
-  const s = tableauState([[C(9, 'H')], [C(8, 'S')], [], [], [], [], []]);
+test('autoAdvance: falls back to a tableau build when no foundation move exists', () => {
+  // red 8 on a column, black 9 on another → autoAdvance should build 8H onto 9S
+  const s = tableauState([[C(8, 'H')], [C(9, 'S')], [], [], [], [], []]);
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, true);
+  assert.deepEqual(s.tableau[1].map(c => c.rank + c.suit), ['9S', '8H']);
+});
+
+test('autoAdvance: moves a multi-card run via build', () => {
+  const s = tableauState([
+    [C(9, 'C', false), C(8, 'H'), C(7, 'S')],
+    [C(9, 'S')],
+    [], [], [], [], [],
+  ]);
+  const moved = Solitaire.autoAdvance(s);
+  assert.equal(moved, true);
+  assert.deepEqual(s.tableau[1].map(c => c.rank + c.suit), ['9S', '8H', '7S']);
+});
+
+test('autoAdvance: returns false when truly no move exists', () => {
+  // black 8 and black 9 (same color) → no build; no foundation move
+  const s = tableauState([[C(8, 'S')], [C(9, 'C')], [], [], [], [], []]);
   const moved = Solitaire.autoAdvance(s);
   assert.equal(moved, false);
 });

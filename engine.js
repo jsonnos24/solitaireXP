@@ -232,13 +232,22 @@
     return false;
   }
 
-  // Right-clicking empty space auto-advances: play one beneficial card to a
-  // foundation (waste top first, then tableau tops left-to-right).
-  // Returns true if a move happened.
+  // Right-clicking empty space auto-advances: play the best available move.
+  // Foundations first (waste top, then tableau tops), then a tableau build —
+  // the waste top, then the longest movable run of each column — onto a matching
+  // non-empty column (e.g. a red 8-run onto a black 9). Returns true if moved.
   function autoAdvance(state) {
     if (state.waste.length && autoToFoundation(state, { pile: 'waste' })) return true;
     for (let i = 0; i < 7; i++) {
       if (state.tableau[i].length && autoToFoundation(state, { pile: 'tableau', index: i })) return true;
+    }
+    if (state.waste.length && autoPlace(state, { pile: 'waste' })) return true;
+    for (let i = 0; i < 7; i++) {
+      const col = state.tableau[i];
+      if (!col.length) continue;
+      let k = col.length - 1; // walk down to the start of the longest movable run
+      while (k > 0 && col[k - 1].faceUp && canStackTableau(col[k], col[k - 1])) k--;
+      if (autoPlace(state, { pile: 'tableau', index: i, cardIndex: k })) return true;
     }
     return false;
   }
