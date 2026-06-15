@@ -75,6 +75,12 @@
     font-size: 13px; line-height: 1;
   }
   .card .spip.flip { transform: translate(-50%, -50%) rotate(180deg); }
+  /* Heavier glyphs for legibility (esp. when scaled down on phones). The stroke
+     also thickens suit/figure symbols, which usually have no real bold weight. */
+  .card .corner, .card .pip, .card .spip {
+    font-weight: bold; -webkit-text-stroke: 0.4px currentColor;
+  }
+  .card .pip { -webkit-text-stroke: 0.6px currentColor; }
   .card.red { color: #c00; }
   .card.black { color: #111; }
   .card.back {
