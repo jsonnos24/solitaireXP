@@ -117,6 +117,15 @@
     outline: 3px solid #ffd400; outline-offset: -1px;
     box-shadow: 0 0 12px 3px rgba(255,212,0,.8); z-index: 40;
   }
+  /* Mobile (touch): drop the desktop-blue margin, fill the screen, and beef up
+     the card glyphs. Layout constants + viewport width are tightened in JS so
+     the board scales up to use the reclaimed space. */
+  .mobile #window { inset: 0; border: 0; border-radius: 0; }
+  .mobile #felt { padding: 6px; }
+  .mobile .card .corner { font-size: 17px; }
+  .mobile .card .spip { font-size: 15px; }
+  .mobile .card .corner, .mobile .card .pip, .mobile .card .spip { -webkit-text-stroke-width: 0.7px; }
+  .mobile .card .pip { -webkit-text-stroke-width: 1px; }
 </style>
 </head>
 <body>
@@ -666,7 +675,17 @@
   <script>
     const RANKS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
     const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
-    const COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+    let COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+
+    // Touch devices: full-bleed the window, tighten column spacing, and shrink the
+    // layout viewport to the board's width so cards scale up to fill the screen.
+    const isMobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (isMobile) {
+      document.documentElement.classList.add('mobile');
+      COL_W = 80; GAP = 8; ROW = 17; TOP = 6;
+      const mv = document.querySelector('meta[name="viewport"]');
+      if (mv) mv.setAttribute('content', 'width=580, viewport-fit=cover');
+    }
 
     // Classic pip arrangements for ranks 2–10 as [xFraction, yFraction] within the
     // card. Left/centre/right columns are kept inboard of the corner indices;
