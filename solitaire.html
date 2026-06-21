@@ -712,6 +712,7 @@
     dragLayer.id = 'drag-layer';
     let state = null;
     let history = [];
+    let redoStack = [];
 
     function rankLabel(r) { return RANKS[r] || String(r); }
 
@@ -842,6 +843,7 @@
       state = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
       state.timed = timed;
       history = [];
+      redoStack = [];
       render();
       startTimer();
     }
@@ -988,7 +990,7 @@
       }, 20);
     }
 
-    function pushHistory() { history.push(Solitaire.cloneState(state)); }
+    function pushHistory() { history.push(Solitaire.cloneState(state)); redoStack = []; }
 
     felt.addEventListener('click', (e) => {
       const el = e.target.closest('[data-pile]');
@@ -1185,12 +1187,23 @@
     function undo() {
       if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
       if (!history.length) return;
+      redoStack.push(Solitaire.cloneState(state));
       state = history.pop();
+      render();
+    }
+
+    function redo() {
+      if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
+      if (!redoStack.length) return;
+      history.push(Solitaire.cloneState(state));
+      state = redoStack.pop();
       render();
     }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F2') { e.preventDefault(); newGame(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); redo(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
       else if (e.key === ' ' || e.key === 'Enter') {
         if (drag || document.querySelector('.overlay')) return;
