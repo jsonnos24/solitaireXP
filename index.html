@@ -43,7 +43,21 @@
     flex: 1; position: relative;
     background: radial-gradient(circle at 50% 0%, var(--felt), var(--felt-dark));
     padding: 16px;
+    touch-action: none;
   }
+  #toolbar {
+    display: flex; gap: 6px; padding: 6px 8px; justify-content: center;
+    background: #ece9d8; border-top: 1px solid #fff;
+  }
+  #toolbar button {
+    flex: 0 1 120px; padding: 6px 10px; font: inherit; font-size: 13px;
+    cursor: pointer; border: 1px solid #aca899; border-radius: 4px;
+    background: linear-gradient(#fdfdfd, #dcd8c8);
+  }
+  #toolbar button:hover { background: linear-gradient(#fff, #cfe2ff); }
+  #toolbar button:disabled { color: #999; cursor: default; background: #e4e1d4; }
+  .mobile #toolbar { gap: 8px; padding: 8px; }
+  .mobile #toolbar button { flex: 1 1 0; min-height: 44px; font-size: 15px; }
   #statusbar {
     display: flex; gap: 24px; padding: 3px 10px; font-size: 12px;
     background: #ece9d8; border-top: 1px solid #fff;
@@ -142,6 +156,12 @@
       <div class="menu" id="menu-help">Help</div>
     </div>
     <div id="felt"></div>
+    <div id="toolbar">
+      <button id="btn-new" type="button">New</button>
+      <button id="btn-undo" type="button">Undo</button>
+      <button id="btn-redo" type="button">Redo</button>
+      <button id="btn-hint" type="button">Hint</button>
+    </div>
     <div id="statusbar">
       <span id="status-score">Score: 0</span>
       <span id="status-time">Time: 0</span>
@@ -675,14 +695,14 @@
   <script>
     const RANKS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
     const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
-    let COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+    let COL_W = 86, ROW_DOWN = 9, ROW_UP = 24, TOP = 8, GAP = 14;
 
     // Touch devices: full-bleed the window, tighten column spacing, and shrink the
     // layout viewport to the board's width so cards scale up to fill the screen.
     const isMobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (isMobile) {
       document.documentElement.classList.add('mobile');
-      COL_W = 80; GAP = 8; ROW = 17; TOP = 6;
+      COL_W = 80; GAP = 8; ROW_DOWN = 10; ROW_UP = 26; TOP = 6;
       const mv = document.querySelector('meta[name="viewport"]');
       if (mv) mv.setAttribute('content', 'width=580, viewport-fit=cover');
     }
@@ -711,6 +731,7 @@
     dragLayer.id = 'drag-layer';
     let state = null;
     let history = [];
+    let redoStack = [];
 
     function rankLabel(r) { return RANKS[r] || String(r); }
 
@@ -803,14 +824,17 @@
         const ts = slot(x, tableauTop);
         ts.dataset.pile = 'tableau'; ts.dataset.index = ci;
         felt.appendChild(ts);
+        let y = tableauTop;
         col.forEach((card, ri) => {
           const el = cardEl(card);
-          place(el, x, tableauTop + ri * ROW);
+          place(el, x, y);
           el.dataset.pile = 'tableau'; el.dataset.index = ci; el.dataset.cardIndex = ri;
           felt.appendChild(el);
+          y += card.faceUp ? ROW_UP : ROW_DOWN;
         });
       });
       updateStatus();
+      updateButtons();
       felt.appendChild(dragLayer);
       applyCardBack();
     }
@@ -839,6 +863,7 @@
       state = Solitaire.deal(Solitaire.makeRng(seed), drawCount);
       state.timed = timed;
       history = [];
+      redoStack = [];
       render();
       startTimer();
     }
@@ -985,7 +1010,7 @@
       }, 20);
     }
 
-    function pushHistory() { history.push(Solitaire.cloneState(state)); }
+    function pushHistory() { history.push(Solitaire.cloneState(state)); redoStack = []; }
 
     felt.addEventListener('click', (e) => {
       const el = e.target.closest('[data-pile]');
@@ -1045,9 +1070,9 @@
       cards.forEach((card, i) => {
         const ce = cardEl(card);
         ce.style.left = baseLeft + 'px';
-        ce.style.top = (baseTop + i * ROW) + 'px';
+        ce.style.top = (baseTop + i * ROW_UP) + 'px';
         dragLayer.appendChild(ce);
-        drag.els.push({ ce, offset: i * ROW });
+        drag.els.push({ ce, offset: i * ROW_UP });
       });
       felt.querySelectorAll('.card').forEach(c => {
         if (c.dataset.pile !== src.pile) return;
@@ -1107,6 +1132,20 @@
       render();
       if (moved) afterMove();
     });
+
+    function cancelDrag() {
+      if (!drag) return;
+      drag.els.forEach(({ ce }) => ce.remove());
+      drag = null;
+      render();
+    }
+    // A scroll/gesture the browser steals mid-drag fires pointercancel; releasing
+    // pointer capture fires lostpointercapture. Both must leave a clean board.
+    felt.addEventListener('pointercancel', cancelDrag);
+    felt.addEventListener('lostpointercapture', cancelDrag);
+    // Block the browser's native element/text drag, which otherwise hijacks a
+    // mouse drag a few pixels in.
+    felt.addEventListener('dragstart', (e) => e.preventDefault());
 
     let autoCompleteTimer = null;
     function afterMove() {
@@ -1168,12 +1207,23 @@
     function undo() {
       if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
       if (!history.length) return;
+      redoStack.push(Solitaire.cloneState(state));
       state = history.pop();
+      render();
+    }
+
+    function redo() {
+      if (autoCompleteTimer) { clearInterval(autoCompleteTimer); autoCompleteTimer = null; }
+      if (!redoStack.length) return;
+      history.push(Solitaire.cloneState(state));
+      state = redoStack.pop();
       render();
     }
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'F2') { e.preventDefault(); newGame(); }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) { e.preventDefault(); redo(); }
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); redo(); }
       else if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); }
       else if (e.key === ' ' || e.key === 'Enter') {
         if (drag || document.querySelector('.overlay')) return;
@@ -1187,6 +1237,20 @@
         confirmNewGame();
       }
     });
+
+    const btnNew  = document.getElementById('btn-new');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const btnHint = document.getElementById('btn-hint');
+    btnNew.addEventListener('click', confirmNewGame);
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
+    btnHint.addEventListener('click', hint);
+
+    function updateButtons() {
+      btnUndo.disabled = history.length === 0;
+      btnRedo.disabled = redoStack.length === 0;
+    }
 
     const CARD_BACKS = {
       blue:  'repeating-linear-gradient(45deg,#1b4ea8 0 4px,#3a6fd0 4px 8px)',
