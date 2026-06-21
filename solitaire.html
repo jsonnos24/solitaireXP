@@ -1242,10 +1242,14 @@
     const btnUndo = document.getElementById('btn-undo');
     const btnRedo = document.getElementById('btn-redo');
     const btnHint = document.getElementById('btn-hint');
-    btnNew.addEventListener('click', confirmNewGame);
-    btnUndo.addEventListener('click', undo);
-    btnRedo.addEventListener('click', redo);
-    btnHint.addEventListener('click', hint);
+    // Stop the click from reaching the document-level closeMenus handler, which
+    // would otherwise remove a dialog the action just opened (e.g. New's
+    // confirm). closeMenus() first so a toolbar tap still closes an open menu —
+    // same idiom as the dropdown items.
+    btnNew.addEventListener('click', (e) => { e.stopPropagation(); closeMenus(); confirmNewGame(); });
+    btnUndo.addEventListener('click', (e) => { e.stopPropagation(); closeMenus(); undo(); });
+    btnRedo.addEventListener('click', (e) => { e.stopPropagation(); closeMenus(); redo(); });
+    btnHint.addEventListener('click', (e) => { e.stopPropagation(); closeMenus(); hint(); });
 
     function updateButtons() {
       btnUndo.disabled = history.length === 0;
