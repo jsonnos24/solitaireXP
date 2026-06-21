@@ -676,14 +676,14 @@
   <script>
     const RANKS = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
     const SUIT_GLYPH = { S: '♠', H: '♥', D: '♦', C: '♣' };
-    let COL_W = 86, ROW = 16, TOP = 8, GAP = 14;
+    let COL_W = 86, ROW_DOWN = 9, ROW_UP = 24, TOP = 8, GAP = 14;
 
     // Touch devices: full-bleed the window, tighten column spacing, and shrink the
     // layout viewport to the board's width so cards scale up to fill the screen.
     const isMobile = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
     if (isMobile) {
       document.documentElement.classList.add('mobile');
-      COL_W = 80; GAP = 8; ROW = 17; TOP = 6;
+      COL_W = 80; GAP = 8; ROW_DOWN = 10; ROW_UP = 26; TOP = 6;
       const mv = document.querySelector('meta[name="viewport"]');
       if (mv) mv.setAttribute('content', 'width=580, viewport-fit=cover');
     }
@@ -804,11 +804,13 @@
         const ts = slot(x, tableauTop);
         ts.dataset.pile = 'tableau'; ts.dataset.index = ci;
         felt.appendChild(ts);
+        let y = tableauTop;
         col.forEach((card, ri) => {
           const el = cardEl(card);
-          place(el, x, tableauTop + ri * ROW);
+          place(el, x, y);
           el.dataset.pile = 'tableau'; el.dataset.index = ci; el.dataset.cardIndex = ri;
           felt.appendChild(el);
+          y += card.faceUp ? ROW_UP : ROW_DOWN;
         });
       });
       updateStatus();
@@ -1046,9 +1048,9 @@
       cards.forEach((card, i) => {
         const ce = cardEl(card);
         ce.style.left = baseLeft + 'px';
-        ce.style.top = (baseTop + i * ROW) + 'px';
+        ce.style.top = (baseTop + i * ROW_UP) + 'px';
         dragLayer.appendChild(ce);
-        drag.els.push({ ce, offset: i * ROW });
+        drag.els.push({ ce, offset: i * ROW_UP });
       });
       felt.querySelectorAll('.card').forEach(c => {
         if (c.dataset.pile !== src.pile) return;
