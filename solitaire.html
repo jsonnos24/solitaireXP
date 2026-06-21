@@ -45,6 +45,19 @@
     padding: 16px;
     touch-action: none;
   }
+  #toolbar {
+    display: flex; gap: 6px; padding: 6px 8px; justify-content: center;
+    background: #ece9d8; border-top: 1px solid #fff;
+  }
+  #toolbar button {
+    flex: 0 1 120px; padding: 6px 10px; font: inherit; font-size: 13px;
+    cursor: pointer; border: 1px solid #aca899; border-radius: 4px;
+    background: linear-gradient(#fdfdfd, #dcd8c8);
+  }
+  #toolbar button:hover { background: linear-gradient(#fff, #cfe2ff); }
+  #toolbar button:disabled { color: #999; cursor: default; background: #e4e1d4; }
+  .mobile #toolbar { gap: 8px; padding: 8px; }
+  .mobile #toolbar button { flex: 1 1 0; min-height: 44px; font-size: 15px; }
   #statusbar {
     display: flex; gap: 24px; padding: 3px 10px; font-size: 12px;
     background: #ece9d8; border-top: 1px solid #fff;
@@ -143,6 +156,12 @@
       <div class="menu" id="menu-help">Help</div>
     </div>
     <div id="felt"></div>
+    <div id="toolbar">
+      <button id="btn-new" type="button">New</button>
+      <button id="btn-undo" type="button">Undo</button>
+      <button id="btn-redo" type="button">Redo</button>
+      <button id="btn-hint" type="button">Hint</button>
+    </div>
     <div id="statusbar">
       <span id="status-score">Score: 0</span>
       <span id="status-time">Time: 0</span>
@@ -815,6 +834,7 @@
         });
       });
       updateStatus();
+      updateButtons();
       felt.appendChild(dragLayer);
       applyCardBack();
     }
@@ -1217,6 +1237,20 @@
         confirmNewGame();
       }
     });
+
+    const btnNew  = document.getElementById('btn-new');
+    const btnUndo = document.getElementById('btn-undo');
+    const btnRedo = document.getElementById('btn-redo');
+    const btnHint = document.getElementById('btn-hint');
+    btnNew.addEventListener('click', confirmNewGame);
+    btnUndo.addEventListener('click', undo);
+    btnRedo.addEventListener('click', redo);
+    btnHint.addEventListener('click', hint);
+
+    function updateButtons() {
+      btnUndo.disabled = history.length === 0;
+      btnRedo.disabled = redoStack.length === 0;
+    }
 
     const CARD_BACKS = {
       blue:  'repeating-linear-gradient(45deg,#1b4ea8 0 4px,#3a6fd0 4px 8px)',
