@@ -43,6 +43,7 @@
     flex: 1; position: relative;
     background: radial-gradient(circle at 50% 0%, var(--felt), var(--felt-dark));
     padding: 16px;
+    touch-action: none;
   }
   #statusbar {
     display: flex; gap: 24px; padding: 3px 10px; font-size: 12px;
@@ -1107,6 +1108,20 @@
       render();
       if (moved) afterMove();
     });
+
+    function cancelDrag() {
+      if (!drag) return;
+      drag.els.forEach(({ ce }) => ce.remove());
+      drag = null;
+      render();
+    }
+    // A scroll/gesture the browser steals mid-drag fires pointercancel; releasing
+    // pointer capture fires lostpointercapture. Both must leave a clean board.
+    felt.addEventListener('pointercancel', cancelDrag);
+    felt.addEventListener('lostpointercapture', cancelDrag);
+    // Block the browser's native element/text drag, which otherwise hijacks a
+    // mouse drag a few pixels in.
+    felt.addEventListener('dragstart', (e) => e.preventDefault());
 
     let autoCompleteTimer = null;
     function afterMove() {
